@@ -47,6 +47,9 @@
 *.cmd
 .tmp_versions/
 modules.order
+
+# Doc files
+*.pdf
 Module.symvers
 Mkfile.old
 dkms.conf
