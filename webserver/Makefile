@@ -13,7 +13,7 @@ LDLIBS   := -lm
 
 .PHONY: all clean
 
-all: $(EXE)
+all: clean $(EXE) exec
 
 $(EXE): $(OBJ) | $(BIN_DIR)
 	$(CC) $(LDFLAGS) $^ $(LDLIBS) -o $@
@@ -26,5 +26,8 @@ $(BIN_DIR) $(OBJ_DIR):
 
 clean:
 	@$(RM) -rv $(BIN_DIR) $(OBJ_DIR)
+
+exec:
+	./bin/webserver 8080
 
 -include $(OBJ:.o=.d)

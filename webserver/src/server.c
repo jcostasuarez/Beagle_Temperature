@@ -10,16 +10,26 @@
  */
 
 #include "../inc/server.h"
-#include "../inc/utils.h"
 #include "../inc/buffer.h"
+#include "../inc/server_client.h"
+
+#define FILENAME_DIR_MAX 100
+char cCurrentPath[FILENAME_DIR_MAX];
 
 int main(int argc, char *argv[])
 {
   int socket_id;
+  int shmid;
   struct shared_buffer *buffer = NULL;
 
   struct sockaddr_in datosServidor;
   socklen_t longDirec;
+
+  printf("\n\nServidor Web\n\n");
+
+  getcwd(cCurrentPath, sizeof(cCurrentPath));
+
+  printf("Current folder: %s\n", cCurrentPath);
 
   if (argc != 2)
   {
@@ -56,48 +66,60 @@ int main(int argc, char *argv[])
 
   if (listen(socket_id, MAX_CONN) < 0)
   {
-    perror("Error en listen");
+    fprintf(stderr, "Error en listen.\n");
     close(socket_id);
     return -1;
   }
 
   // Inicializamos el buffer
 
-  if (buffer_init(buffer) < 0)
+  if (buffer_init(&buffer , &shmid) < 0)
   {
-    perror("Error en buffer_init");
+    fprintf(stderr, "Error en buffer_init.\n");
     close(socket_id);
     return -1;
   }
 
+  printf("Buffer de memoria compartida creado: %p\n", buffer);
+
+  print_buffer(buffer);
+  
   // Creamos un proceso hijo que carga el buffer
 
   pid_t pid = fork();
 
   if (pid < 0)
   {
-    perror("Error en fork");
-    buffer_destroy(buffer); // Destruimos el buffer
+    fprintf(stderr, "Error en fork.\n");
+    buffer_destroy(&buffer , shmid); // Destruimos el buffer
     close(socket_id);      // Cerramos el socket
-    exit(1);
+    return -1;
   }
+
+  fprintf(stdout, "PID: %d\n", pid);
+  fprintf(stdout, "buffer: %p\n", buffer);
 
   if (pid == 0)
   {
     // Proceso hijo
 
+    // Demon: Permite que el proceso hijo se ejecute en segundo plano
+    // y que el proceso padre pueda terminar sin que el hijo termine.
+
+
     while (1)
     {
-      float temp_celcius = 0;
+      // Carga el buffer
+      if (buffer_put(buffer, 24) < 0)
+      {
+        fprintf(stderr, "Error en buffer_put.\n");
+        buffer_destroy(&buffer, shmid); // Destruimos el buffer
+        close(socket_id);      // Cerramos el socket
+        exit(1);
+      }
+      printf("Cargando buffer de memoria compartida\n");
 
-      // Leemos el char device
-      temp_celius = read_char_device_bmp280();
-
-      // Actualizamos el buffer
-      // El buffer es de tipo FIFO
-
-      // TODO: Add code to update the buffer
-
+      sleep(BUFFER_TIME_SLEEP);
     } // End of while loop
   } // End of child process
 
@@ -119,7 +141,7 @@ int main(int argc, char *argv[])
       if (s_aux_padre < 0)
       {
         perror("Error en accept");
-        buffer_destroy(buffer); // Destruimos el buffer
+        buffer_destroy(&buffer , shmid); // Destruimos el buffer
         close(socket_id);
         return -1;
       }
@@ -128,7 +150,7 @@ int main(int argc, char *argv[])
       if (pid_padre < 0)
       {
         perror("No se puede crear un nuevo proceso mediante fork");
-        buffer_destroy(buffer); // Destruimos el buffer
+        buffer_destroy(&buffer , shmid); // Destruimos el buffer
         close(socket_id);
         return -1;
       }
@@ -144,7 +166,7 @@ int main(int argc, char *argv[])
 
   printf("\nServidor Web finalizado\n");
 
-  buffer_destroy(buffer); // Destruimos el buffer
+  buffer_destroy(&buffer , shmid); // Destruimos el buffer
   close(socket_id); // Cerramos el socket
 
   return 0;
