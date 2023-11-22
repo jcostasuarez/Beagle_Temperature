@@ -4,12 +4,13 @@
 #include <linux/errno.h> /*Error handling*/
 #include <linux/module.h> /*Modules handling*/
 #include <linux/kernel.h> /*Kernel facilities*/
+#include <linux/irqreturn.h> /*IRQ handling*/
 #include <linux/interrupt.h> /*Interrupt handling*/
 #include <linux/pinctrl/pinctrl.h> /*Pin control*/
 #include <linux/pinctrl/pinmux.h> /*Pin control*/
-#include <linux/io.h> /*IO access*/
 #include <linux/delay.h> /*Delay handling*/
 #include <linux/mutex.h> /*Mutex handling*/
+#include <linux/io.h> /*IO handling*/
 
 #include "types.h"
 
@@ -49,7 +50,7 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
  * @param data 
  * @return int 
  */
-int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t *data);
+int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t data);
 
 /*Funciones secundarias*/
 
@@ -88,8 +89,24 @@ int i2c_sitara_is_connected(uint8_t slave_address);
 
 typedef struct i2c_sitara_registers
 {
-    /* data */
-};
+    uint32_t revnb_lo;
+    uint32_t revnb_hi;
+    uint32_t sysc;
+    uint32_t irqstatus_raw;
+    uint32_t irqstatus;
+    uint32_t irqenable_set;
+    uint32_t irqenable_clr;
+    uint32_t we;
+    uint32_t syss;
+    uint32_t buf;
+    uint32_t cnt;
+    uint32_t data;
+    uint32_t con;
+    uint32_t sa;
+    uint32_t psc;
+    uint32_t scll;
+    uint32_t sclh;
+} i2c_sitara_registers_t;
 
 
 #endif // __I2C_COSTA_H

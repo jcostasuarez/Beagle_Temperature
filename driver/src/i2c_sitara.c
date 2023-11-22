@@ -12,7 +12,7 @@ static int i2c_sitara_config_clock(void);
 static int i2c_sitara_start(unsigned int dcount);
 static int i2c_reset_fifos(void);
 static int pool_register(void __iomem *reg, uint32_t mask, uint32_t value, uint32_t timeout);
-static irqreturn_t  i2c_sitara_irq_handler (int irq, void *dev id, struct pt regs*regs);
+static irqreturn_t  i2c_sitara_irq_handler (int , void *);
 
 /* Variables globales, privadas */
 
@@ -88,7 +88,7 @@ int i2c_sitara_init()
     }
 
     /*Configuro el clock de periféricos*/
-    if(ret_val = i2c_sitara_config_peripheral_clock(void) != 0)
+    if((ret_val = i2c_sitara_config_peripheral_clock()) != 0)
     {
         printk( KERN_ERR "Error al configurar el clock de periféricos\n");
         iounmap(i2c2_registers);
@@ -96,7 +96,7 @@ int i2c_sitara_init()
     }
 
     /*Configuro los pines del I2C2*/
-    if(ret_val = i2c_sitara_config_pinmux(void) != 0)
+    if((ret_val = i2c_sitara_config_pinmux()) != 0)
     {
         printk( KERN_ERR "Error al configurar los pines del I2C2\n");
         iounmap(i2c2_registers);
@@ -105,7 +105,7 @@ int i2c_sitara_init()
 
     /*Configuro el clock del I2C2*/
 
-    if(ret_val = i2c_sitara_config_clock(void))
+    if((ret_val = i2c_sitara_config_clock()))
     {
         printk( KERN_ERR "Error al configurar el clock del I2C2\n");
         iounmap(i2c2_registers);
@@ -114,16 +114,17 @@ int i2c_sitara_init()
 
     /*Configuro las interrupciones del I2C2*/
 
-    if(ret_val = i2c_sitara_config_interrupts(void) != 0)
+    if((ret_val = i2c_sitara_config_interrupts()) != 0)
     {
-        printk( KERN_ERR "Error al configurar las interrupciones del I2C2\n")
+        printk( KERN_ERR "Error al configurar las interrupciones del I2C2\n");
         iounmap(i2c2_registers);
         return ret_val;
     }
 
     /*Configuro los registros del I2C2 y habilito el bus*/
+    ret_val = i2c_sitara_config_regs();
 
-    if(ret_val = i2c_sitara_config_regs(i2c2_registers) != 0)
+    if(ret_val != 0)
     {
         printk( KERN_ERR "Error al configurar los registros del I2C2\n");
         iounmap(i2c2_registers);
@@ -143,20 +144,11 @@ int i2c_sitara_exit(void)
 {
     int ret_val = 0;
 
-    if(ret_val = free_irq(IRQ_I2C2, NULL) != 0)
-    {
-        printk(KERN_ERR "Error al liberar la interrupción del I2C2\n");
-        return ret_val;
-    }
+    i2c_sitara_free_interrupts();
 
     if(i2c2_registers!=NULL)
     {
-        if(ret_val = iounmap(i2c2_registers))
-        {
-            printk(KERN_ERR "Error al liberar la memoria de i2c2_registers\n");
-            return ret_val;
-        }
-
+        iounmap(i2c2_registers);
     }
 
     printk(KERN_INFO "Liberación de interrupciones i2c2 exitosa\n");
@@ -180,7 +172,7 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
 
     if(i2c2_registers==NULL)
     {
-        if(i2c2_registers = ioremap(I2C_SITARA_I2C2_BASE, I2C_SITARA_I2C2_SIZE) == NULL)
+        if((i2c2_registers = ioremap(I2C_SITARA_I2C2_BASE, I2C_SITARA_I2C2_SIZE)) == NULL)
         {
             printk(KERN_ERR "Error al mapear la memoria de i2c2_registers\n");
             return -ENOMEM;
@@ -188,43 +180,37 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
     }
 
     /* Pool del bit BB del registro I2C_IRQSTATUS_RAW*/
-
-    if(ret_val = pool_register(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW, I2C_SITARA_BB_MASK, I2C_SITARA_IRQENABLE_SET_BB, 1000) != 0)
+    ret_val = pool_register(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW, I2C_SITARA_BB_MASK, I2C_SITARA_IRQENABLE_SET_BB, 1000);
+    if(ret_val != 0)
     {
         printk(KERN_ERR "Error al esperar la interrupción de bus libre\n");
         return ret_val;
     }
 
     /*Reset FIFOs*/
+    ret_val=i2c_reset_fifos();
 
-    if(ret_val=i2c_reset_fifos())
+    if( ret_val != 0)
     {
         printk(KERN_ERR "Error al resetear los FIFOs\n");
         return ret_val;
     }
 
+
     /*Set slave address*/
 
     aux = (slave_address << 1) | 0x1;
-    if(ret_val = iowrite32(aux, i2c2_registers+I2C_SITARA_SA) != 0)
-    {
-        printk(KERN_ERR "Error al escribir la dirección del esclavo\n");
-        return ret_val;
-    }
+    
+    iowrite32(aux, i2c2_registers+I2C_SITARA_SA);
 
     /*Set data*/
 
-    ret_val = iowrite32(slave_register, i2c2_registers+I2C_SITARA_DATA) & mask;
-
-    if(ret_val)
-    {
-        printk(KERN_ERR "Error al escribir el registro del esclavo\n");
-        return ret_val;
-    }
+    iowrite32(slave_register, i2c2_registers+I2C_SITARA_DATA);
 
     /*Start*/
+    ret_val = i2c_sitara_start(1);
 
-    if(ret_val = i2c_sitara_start(1) != 0)
+    if(ret_val != 0)
     {
         printk(KERN_ERR "Error al iniciar el bus\n");
         return ret_val;
@@ -255,7 +241,7 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
     }
     /*Read Data*/
 
-    *data = iowread32(i2c2_registers+I2C_SITARA_DATA) & mask;
+    *data = ioread32(i2c2_registers+I2C_SITARA_DATA) & mask;
 
     return ret_val;
 }
@@ -269,14 +255,14 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
  * @param data 
  * @return int 
  */
-int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t *data)
+int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t data)
 {
     int ret_val = 0;
     uint32_t aux = 0;
 
     if(i2c2_registers==NULL)
     {
-        if(i2c2_registers = ioremap(I2C_SITARA_I2C2_BASE, I2C_SITARA_I2C2_SIZE) == NULL)
+        if((i2c2_registers = ioremap(I2C_SITARA_I2C2_BASE, I2C_SITARA_I2C2_SIZE)) == NULL)
         {
             printk(KERN_ERR "Error al mapear la memoria de i2c2_registers\n");
             return -ENOMEM;
@@ -285,7 +271,9 @@ int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t *da
 
     /* Pool del bit BB del registro I2C_IRQSTATUS_RAW*/
 
-    if(ret_val = pool_register(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW, I2C_SITARA_BB_MASK, I2C_SITARA_IRQENABLE_SET_BB, 1000) != 0)
+    ret_val = pool_register(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW, I2C_SITARA_BB_MASK, I2C_SITARA_IRQENABLE_SET_BB, 1000);
+
+    if(ret_val != 0)
     {
         printk(KERN_ERR "Error al esperar la interrupción de bus libre\n");
         return ret_val;
@@ -293,7 +281,9 @@ int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t *da
 
     /*Reset FIFOs*/
 
-    if(ret_val=i2c_reset_fifos())
+    ret_val=i2c_reset_fifos();
+
+    if(ret_val != 0)
     {
         printk(KERN_ERR "Error al resetear los FIFOs\n");
         return ret_val;
@@ -303,29 +293,20 @@ int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t *da
 
     aux = (slave_address << 1) | 0x0;
 
-    if(ret_val = iowrite32(aux, i2c2_registers+I2C_SITARA_SA) != 0)
-    {
-        printk(KERN_ERR "Error al escribir la dirección del esclavo\n");
-        return ret_val;
-    }
+    iowrite32(aux, i2c2_registers+I2C_SITARA_SA);
+
 
     /*Write Data*/
+    iowrite32(slave_register, i2c2_registers+I2C_SITARA_DATA);
 
-    if(ret_val = iowrite32(slave_register, i2c2_registers+I2C_SITARA_DATA))
-    {
-        printk(KERN_ERR "Error al escribir el registro del esclavo\n");
-        return ret_val;
-    }
 
-    if(ret_val = iowrite32(*data, i2c2_registers+I2C_SITARA_DATA))
-    {
-        printk(KERN_ERR "Error al escribir el dato del registro\n");
-        return ret_val;
-    }
+    iowrite32(data, i2c2_registers+I2C_SITARA_DATA);
+
+
 
     /*Start*/
-
-    if(ret_val = i2c_sitara_start(2) != 0)
+    ret_val = i2c_sitara_start(2);
+    if( ret_val!= 0)
     {
         printk(KERN_ERR "Error al iniciar el bus\n");
         return ret_val;
@@ -336,13 +317,28 @@ int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t *da
 
 /**
  * @brief 
- * 
  * @param slave_address 
  * @return int 
  */
 int i2c_sitara_is_connected(uint8_t slave_address)
 {
+    int ret_val = 0;
+    uint8_t aux = 0;
 
+    if(i2c2_registers==NULL)
+    {
+        printk(KERN_ERR "i2c: Registros no mapeados en memoria, iniciar el bus\n");
+    }
+
+    ret_val = i2c_sitara_read(slave_address, 0xD0, 0x0, &aux);
+
+    if( ret_val != 0)
+    {
+        printk(KERN_ERR "i2c: Error al leer el registro\n");
+        return ret_val;
+    }
+
+    return 0;
 }
 
 /**
@@ -352,7 +348,7 @@ int i2c_sitara_is_connected(uint8_t slave_address)
  * @param id 
  * @return irqreturn_t 
  */
-irqreturn_t  i2c_sitara_irq_handler (int irq, void *dev id)
+static irqreturn_t  i2c_sitara_irq_handler (int irq, void *dev_id)
 {
     uint32_t irq_status_raw = 0;
 
@@ -362,11 +358,7 @@ irqreturn_t  i2c_sitara_irq_handler (int irq, void *dev id)
 
     while(irq_status_raw != 0)
     {
-        if(iowrite32(irq_status_raw, i2c2_registers+I2C_SITARA_IRQSTATUS) != 0)
-        {
-            printk(KERN_ERR "Error al limpiar las interrupciones del I2C2\n");
-            return -EIO;
-        }
+        iowrite32(irq_status_raw, i2c2_registers+I2C_SITARA_IRQSTATUS);
 
         if((irq_status_raw & I2C_SITARA_RRDY_MASK) == I2C_SITARA_RRDY_MASK)
         {
@@ -398,7 +390,6 @@ irqreturn_t  i2c_sitara_irq_handler (int irq, void *dev id)
 }
 
 
-
 /// @brief Configura el clock del I2C2
 /// @param void 
 /// @return 0 si la configuración fue exitosa o un valor negativo en caso de error
@@ -417,7 +408,7 @@ static int i2c_sitara_config_peripheral_clock(void)
         return -ENOMEM;
     }
 
-    cm_wkup = ioremap(CM_WKUP_BASE, CM_WKUP_SIZE);
+    cm_wkup = ioremap(CM_WKP_BASE, CM_WKP_SIZE);
     if(cm_wkup == NULL)
     {
         printk(KERN_ERR "Error al mapear la memoria de CM_WKUP\n");
@@ -425,9 +416,13 @@ static int i2c_sitara_config_peripheral_clock(void)
         return -ENOMEM;
     }
 
-    ret_val = iowrite32(0x2, cm_per+CM_PER_I2C2_CLKCTRL_OFFSET);
+    iowrite32(0x2, cm_per+CM_PER_I2C2_CLKCTRL_OFFSET);
 
-    if(ret_val)
+    iowrite32(0x4, cm_per+CM_PER_I2C2_CLKCTRL_OFFSET);
+
+    ret_val = pool_register(cm_wkup+CM_WKP_IDLEST_DPLL_PER_OFFSET, 0x1, 0x1,1000);
+
+    if( ret_val != 0)
     {
         printk(KERN_ERR "Error al configurar el clock del I2C2\n");
         iounmap(cm_per);
@@ -435,55 +430,17 @@ static int i2c_sitara_config_peripheral_clock(void)
         return ret_val;
     }
 
-    ret_val = iowrite32(0x4, cm_per+CM_PER_I2C2_CLKCTRL_OFFSET);
+    iowrite32(0x0, cm_wkup+CM_WKP_CLKSEL_DPLL_PER_OFFSET);
 
-    if(ret_val)
-    {
-        printk(KERN_ERR "Error al configurar el clock del I2C2\n");
-        iounmap(cm_per);
-        iounmap(cm_wkup);
-        return ret_val;
-    }
+    iowrite32(0x1, cm_wkup+CM_WKP_DIV_M2_DPLL_PER_OFFSET);
 
-    if(ret_val = pool_register(cm_wkp+CM_WKP_IDLEST_DPLL_PER_OFFSET, 0x1, 0x1) != 0)
-    {
-        printk(KERN_ERR "Error al configurar el clock del I2C2\n");
-        iounmap(cm_per);
-        iounmap(cm_wkup);
-        return ret_val;
-    }
 
-    ret_val = iowrite32(0x0, cm_wkp+CM_WKP_CLKSEL_DPLL_PER_OFFSET);
 
-    if(ret_val)
-    {
-        printk(KERN_ERR "Error al configurar el clock del I2C2\n");
-        iounmap(cm_per);
-        iounmap(cm_wkup);
-        return ret_val;
-    }
+    iowrite32(0x7, cm_wkup+CM_WKP_CLKMODE_DPLL_PER_OFFSET);
 
-    ret_val = iowrite32(0x1, cm_wkp+CM_WKP_DIV_M2_DPLL_PER_OFFSET);
+    ret_val = pool_register(cm_wkup+CM_WKP_IDLEST_DPLL_PER_OFFSET, 0x1, 0x1,1000);
 
-    if(ret_val)
-    {
-        printk(KERN_ERR "Error al configurar el clock del I2C2\n");
-        iounmap(cm_per);
-        iounmap(cm_wkup);
-        return ret_val;
-    }
-
-    ret_val = iowrite32(0x7, cm_wkp+CM_WKP_CLKMODE_DPLL_PER_OFFSET);
-
-    if(ret_val)
-    {
-        printk(KERN_ERR "Error al configurar el clock del I2C2\n");
-        iounmap(cm_per);
-        iounmap(cm_wkup);
-        return ret_val;
-    }
-
-    if(ret_val = pool_register(cm_wkp+CM_WKP_IDLEST_DPLL_PER_OFFSET, 0x1, 0x1) != 0)
+    if( ret_val != 0)
     {
         printk(KERN_ERR "Error al configurar el clock del I2C2\n");
         iounmap(cm_per);
@@ -543,7 +500,7 @@ static int i2c_sitara_config_pinmux(void)
 static int i2c_sitara_config_regs(void)
 {
     int ret_val = 0;
-    uint32_t aux = 0
+    uint32_t aux = 0;
 
     if(i2c2_registers == NULL)
     {
@@ -562,11 +519,7 @@ static int i2c_sitara_config_regs(void)
     aux = ioread32(i2c2_registers+I2C_SITARA_CON);
     aux |= I2C_SITARA_CON_EN | I2C_SITARA_CON_MST | I2C_SITARA_CON_TRX  ;/*| I2C_SITARA_CON_STT | I2C_SITARA_CON_STP ;*/
 
-    if(ret_val = iowrite32(aux, i2c2_registers+I2C_SITARA_CON))
-    {
-        printk(KERN_ERR "Error al configurar el registro I2C_SITARA_CON\n");
-        return ret_val;
-    }
+    iowrite32(aux, i2c2_registers+I2C_SITARA_CON);
 
     /*Enable interrupt masks (I2C_IRQENABLE_SET), if using interrupt for transmit/receive data.*/
 
@@ -575,12 +528,7 @@ static int i2c_sitara_config_regs(void)
     /* ARDY (Reg Ready to Access), RRDY (Receive Ready), XRDY (Transmit Ready), NACK (No Acknowledge), BF (Buss Free)*/
     aux |= I2C_SITARA_IRQENABLE_SET_ARDY | I2C_SITARA_IRQENABLE_SET_RRDY | I2C_SITARA_IRQENABLE_SET_XRDY | I2C_SITARA_IRQENABLE_SET_NACK | I2C_SITARA_IRQENABLE_SET_BF;
 
-    if(ret_val = iowrite32(aux, i2c2_registers+I2C_SITARA_IRQENABLE_SET))
-    {
-        printk(KERN_ERR "Error al configurar el registro I2C_SITARA_IRQENABLE_SET\n");
-        return ret_val;
-    }
-
+    iowrite32(aux, i2c2_registers+I2C_SITARA_IRQENABLE_SET);
     
     printk(KERN_INFO "Configuración de registros i2c2 exitosa\n");
     return ret_val;
@@ -595,7 +543,11 @@ static int i2c_sitara_config_interrupts(void)
 {
     int ret_val = 0;
 
-    if((ret_val = request_irq(IRQ_I2C2, i2c_sitara_irq_handler, IRQF_TRIGGER_RISING, NULL)) != 0)
+    char *devname = "i2c_sitara";
+
+    ret_val = request_irq(IRQ_I2C2, i2c_sitara_irq_handler, IRQF_TRIGGER_RISING, devname,NULL);
+
+    if(ret_val != 0)
     {
         printk(KERN_ERR "Error al solicitar la interrupción del I2C2\n");
         return ret_val;
@@ -614,11 +566,7 @@ static int i2c_sitara_free_interrupts(void)
 {
     int ret_val = 0;
 
-    if((ret_val = free_irq(IRQ_I2C2, NULL)) != 0)
-    {
-        printk(KERN_ERR "Error al liberar la interrupción del I2C2\n");
-        return ret_val;
-    }
+    free_irq(IRQ_I2C2, NULL);
 
     printk(KERN_INFO "Liberación de interrupciones i2c2 exitosa\n");
     return ret_val;
@@ -639,12 +587,11 @@ static int i2c_sitara_config_clock(void)
 
     unsigned int aux = 0;
 
-
-    if(i2c_sitara_registers == NULL)
+    if(i2c2_registers == NULL)
     {
-        i2c_sitara_registers = ioremap(I2C_SITARA_I2C2_BASE, I2C_SITARA_I2C2_SIZE);
+        i2c2_registers = ioremap(I2C_SITARA_I2C2_BASE, I2C_SITARA_I2C2_SIZE);
 
-        if(i2c_sitara_registers == NULL)
+        if(i2c2_registers == NULL)
         {
         printk(KERN_ERR "Error al mapear la memoria de i2c2_registers\n");
         return -ENOMEM;
@@ -654,30 +601,19 @@ static int i2c_sitara_config_clock(void)
     /*Configurando prescaler*/
 
     /*I2C_PSC = x para obtener 12MHz*/
-    if(ret_val = iowrite32(0x3, i2c_sitara_registers+I2C_SITARA_PSC))
-    {
-        printk(KERN_ERR "Error al configurar el prescaler del I2C2\n");
-        return ret_val;
-    }
+    iowrite32(0x3, i2c2_registers+I2C_SITARA_PSC);
 
     /*Programar para obtener entre 100Kbps o 400Kbps con SCLL Y SCLH*/
 
     aux = I2C_CLK_INT /(I2C_BIT_RATE *2) - 7;
-    if(ret_val = iowrite32(aux, i2c_sitara_registers+I2C_SITARA_SCLL))
-    {
-        printk(KERN_ERR "Error al configurar el SCLL del I2C2\n");
-        return ret_val;
-    }
+
+    iowrite32(aux, i2c2_registers+I2C_SITARA_SCLL);
 
     aux = I2C_CLK_INT /(I2C_BIT_RATE *2) - 5;
-    if(ret_val = iowrite32(aux, i2c_sitara_registers+I2C_SITARA_SCLH))
-    {
-        printk(KERN_ERR "Error al configurar el SCLH del I2C2\n");
-        return ret_val;
-    }
 
+    iowrite32(aux, i2c2_registers+I2C_SITARA_SCLH);
 
-    return 0;
+    return ret_val;
 }
 
 /// @brief 
@@ -694,23 +630,16 @@ static int i2c_sitara_start(unsigned int dcount)
         printk(KERN_ERR "No se puede iniciar el bus\n");
         return -ENOMEM;
     }
-    
-    if(ret_val = iowrite32(dcount, i2c2_registers+I2C_SITARA_CNT) != 0)
-    {
-        printk(KERN_ERR "Error al escribir el registro de conteo\n");
-        return ret_val;
-    }
+
+    iowrite32(dcount, i2c2_registers+I2C_SITARA_CNT);
 
     aux = ioread32(i2c2_registers+I2C_SITARA_CON);
-    aux |= I2C_SITARA_CON_STT | I2C_SITARA_CON_STP;
+    aux |= I2C_SITARA_CON_STT | I2C_SITARA_CON_STP | I2C_SITARA_CON_MST | I2C_SITARA_CON_TRX | I2C_SITARA_CON_EN;
 
-    if(ret_val = iowrite32(aux, i2c2_registers+I2C_SITARA_CON) != 0)
-    {
-        printk(KERN_ERR "Error al esperar la interrupción de bus libre\n");
-        return ret_val;
-    }
+
+    iowrite32(aux, i2c2_registers+I2C_SITARA_CON);
     
-    return 0;
+    return ret_val;
 }
 
 /// @brief 
@@ -732,11 +661,13 @@ static int i2c_reset_fifos(void)
 
     aux |= I2C_SITARA_BUF_RXFIFO_CLR | I2C_SITARA_BUF_TXFIFO_CLR;
 
-    if(ret_val = iowrite32(aux, i2c2_registers+I2C_SITARA_BUF) != 0)
-    {
-        printk(KERN_ERR "Error al resetear los FIFOs\n");
-        return ret_val;
-    }
+    iowrite32(aux, i2c2_registers+I2C_SITARA_BUF);
 
-    return 0;
+    return ret_val;
 }
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Juan Costa Suárez");
+MODULE_DESCRIPTION("Driver para el sensor bmp280, usando i2c2, y Beaglebone Black");
+MODULE_VERSION("1.0");
+

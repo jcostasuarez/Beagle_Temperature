@@ -1,266 +1,417 @@
+/* Includes */
+
 #include "bmp280.h"
+#include "i2c_sitara.h"
+
+/* Defines */
+
+#define MINOR_NUMBER 0
+#define NUMBER_OF_DEVICES 1
+#define DEVICE_CLASS_NAME "temp_sensor"
+#define DEVICE_NAME "bmp280"
+
+/* Static variables */
+
+static char* device_name = NULL;
+static dev_t device_number;
+static struct class *device_class;
+static struct cdev my_device;
+static uint32_t dig_T1;
+static int32_t dig_T2;
+static int32_t dig_T3;
+
+/* Private functions prototypes */
+
+static int char_bmp280_open(struct inode *inode, struct file *file);
+static int char_bmp280_close(struct inode *inode, struct file *file);
+static ssize_t char_bmp280_read(struct file *file, char __user *buf, size_t len, loff_t *offset);
+static ssize_t char_bmp280_write(struct file *file, const char __user *buf, size_t len, loff_t *offset);
+static int driver_bmp280_probe( struct platform_device *pdev );
+static int driver_bmp280_remove( struct platform_device *pdev );
+static int bmp280_init(void);
+static void bmp280_deinit(void);
+static int bmp280_is_connected(void);
+static int bmp280_set_frequency(bmp280_freq_t frequency);
+static int bmp280_set_mode(bmp280_mode_t mode);
+static int bmp280_get_temperature(bmp280_temperature *temperature);
+
+/* File operations */
 
 
-/* Global variables*/
+static const struct file_operations bmp280_fops =
+{
+    .owner = THIS_MODULE,
+    .open = char_bmp280_open,
+    .release = char_bmp280_close,
+    .read = char_bmp280_read,
+    .write = char_bmp280_write,
+    /*.unlocked_ioctl = bmp280_ioctl*/
+};
 
+
+/* Functions */
+
+/// @brief Creates the char device
+/// @param 
+/// @return "0"on success, non zero error code on error.
+int char_device_create_bmp280(void)
+{
+    int retval = -1;
+
+    // Get own copy of name
+    if((device_name = kmalloc(strlen(DEVICE_NAME) + 1, GFP_KERNEL)) == NULL)
+    {
+        pr_err("[LOG] Out of memory for char device.\n");
+        goto name_error;
+    }
+
+    strcpy(device_name, DEVICE_NAME);
+
+    if((retval = alloc_chrdev_region(&device_number, MINOR_NUMBER, NUMBER_OF_DEVICES, device_name)) != 0)
+    {
+        pr_err("[LOG] Couldn't allocate device number.\n");
+        goto kmalloc_error;
+    }
+
+    if((device_class = class_create(THIS_MODULE, DEVICE_CLASS_NAME)) == NULL)
+    {
+        pr_err("[LOG] Device class couldn't be created.\n");
+        retval = -1;
+        goto chrdev_error;
+    }
+
+    if(device_create(device_class, NULL, device_number, NULL, device_name) == NULL)
+    {
+        pr_err("[LOG] Device couldn't be created.\n");
+        retval = -1;
+        goto class_error;
+    }
+
+    cdev_init(&my_device, &bmp280_fops);
+
+    if(cdev_add(&my_device, device_number, NUMBER_OF_DEVICES) < 0)
+    {
+        pr_err("[LOG] Couldn't add the device to the system.\n");
+        retval = -1;
+        goto device_error;
+    }
+
+    pr_info("[LOG] Char device created successfully.\n");
+
+    return 0;
+
+    device_error: device_destroy(device_class, device_number);
+    class_error: class_destroy(device_class);
+    chrdev_error: unregister_chrdev(device_number, device_name);
+    kmalloc_error: kfree(device_name);
+    name_error: return retval;
+}   
+
+/// @brief Removes the char device
+/// @param void
+/// @return void
+void char_device_remove(void)
+{
+    pr_info("[LOG] Removing char device.\n");
+
+    cdev_del(&my_device);
+    device_destroy(device_class, device_number);
+    class_destroy(device_class);
+    unregister_chrdev(device_number, device_name);
+    kfree(device_name);
+}
+
+/* Private functions */
 
 /*********CHAR DEVICE**********/
 
-/* Static functions*/
-
-static int bmp280_open(struct inode *inode, struct file *file)
+static int char_bmp280_open(struct inode *inode, struct file *file)
 {
-    unsigned int maj = imajor(inode);
-    unsigned int min = iminor(inode);
+    pr_info("[LOG] Abriendo el archivo\n");
 
-    pr_info("[LOG] Major: %d, Minor: %d\n", maj, min);
-
-    struct bmp280_dev *bmp280_devp;
-
-    bmp280_devp = container_of(inode->i_cdev, struct bmp280_dev, cdev);
-    
-    if(bmp280_devp == NULL)
+    if(!bmp280_is_connected()) 
     {
-        pr_err("[LOG] Error al obtener el puntero al dispositivo\n");
+        printk("Couldn't open device.\n");
         return -1;
     }
 
-    file->private_data = bmp280_devp;
-
     return 0;
 }
 
-static int bmp280_close(struct inode *inode, struct file *file)
+int char_bmp280_close(struct inode *inode, struct file *file)
 {
     pr_info("[LOG] Cerrando el archivo\n");
 
-    struct bmp280_dev *bmp280_devp = NULL;
-    
+
     return 0;
 }
 
-static ssize_t bmp280_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
+ssize_t char_bmp280_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
 {
+    bmp280_temperature temperature;
+
+    pr_info("[LOG] Leyendo el archivo\n");
+
+    if(bmp280_get_temperature(&temperature) < 0)
+    {
+        pr_err("[LOG] Error al obtener la temperatura\n");
+
+        return -1;
+    }
+
+    if(copy_to_user(buf, &temperature, sizeof(bmp280_temperature)) != 0)
+    {
+        pr_err("[LOG] Error al copiar la temperatura al usuario\n");
+
+        return -1;
+    }
+
     return 0;
 }
 
-static ssize_t bmp280_write(struct file *file, const char __user *buf, size_t len, loff_t *offset)
+ssize_t char_bmp280_write(struct file *file, const char __user *buf, size_t len, loff_t *offset)
 {
+    pr_info("[LOG] Escribiendo el archivo\n");
+
     return 0;
 }
 
 /* Static variables*/
 
-static const struct file file_operations bmp280_fops =
-{
-    .owner = THIS_MODULE,
-    .open = bmp280_open,
-    .release = bmp280_close,
-    .read = bmp280_read,
-    .write = bmp280_write,
-    /*.unlocked_ioctl = bmp280_ioctl*/
-};
+/****************DRIVER****************/
 
-/****************DRIVERS****************/
-
-static struct
-{
-  dev_t TD3_I2C_DEV;
-  struct cdev *TD3_I2C_CHAR_DEV;
-  struct device *TD3_I2C_DEVICE;
-  struct class *TD3_I2C_DEV_CLASS;
-} state;
-
-static struct file_operations TD3_FOPS =
-{
-    .owner = THIS_MODULE,
-    .open = td3_i2c_open,
-    .release = td3_i2c_close,
-    .read = td3_i2c_read,
-    .write = td3_i2c_write,
-    .unlocked_ioctl = td3_i2c_ioctl
-};
-
-static struct of_device_id i2c_of_device_ids[] =
+static struct of_device_id bmp280_of_match[] = 
 {
     {
-        .compatible = NAME,
+        .compatible = "bosch,bmp280",
     },
-{}};
-
-MODULE_DEVICE_TABLE(of, i2c_of_device_ids);
-
-static struct platform_driver TD3_PLAT_DRIVER =
-{
-    .probe = bmp_280_probe,
-    .remove = bmp_280_remove,
-    .driver =
-        {
-            .name = NAME,
-            .of_match_table = of_match_ptr(i2c_of_device_ids),
-        },
+    {},
 };
 
-static void bmp280_init(void)
+MODULE_DEVICE_TABLE(of, bmp280_of_match);
+
+static struct platform_driver bmp280_driver = 
 {
-    int ret_val = 0;
-
-    if(ret_val = bmp280_config(void) != 0)
+    .probe = driver_bmp280_probe,
+    .remove = driver_bmp280_remove,
+    .driver = 
     {
-        return ret_val;
+        .name = "bmp280",
+        .of_match_table = bmp280_of_match,
+    },
+};
+
+MODULE_DEVICE_TABLE(of, bmp280_of_match);
+
+static int __init driver_bmp280_init(void)
+{
+    int retval = -1;
+
+    pr_info("[LOG] Inicializando el driver\n");
+
+    if((retval = platform_driver_register(&bmp280_driver)) < 0)
+    {
+        pr_err("[LOG] Error al registrar el driver\n");
+        goto platform_driver_error;
     }
 
-    if(ret_val = bmp280_reset_regs(void) != 0)
-    {
-        return ret_val;
-    }
+    
+    pr_info("[LOG] Driver inicializado correctamente\n");
 
-    buffer[0] = MPU6050_RA_PWR_MGMT_1; //Salgo sleep mode y habilito los sensores
-    buffer[1] = 0x00;
-    I2C_Write_n_Bytes(buffer, 2);
+    return 0;
 
-    msleep(100);
-
-    buffer[0] = MPU6050_RA_PWR_MGMT_1; // Seteo la fuente de clock com pll del giroscopo
-    buffer[1] = 0x01;
-    I2C_Write_n_Bytes(buffer, 2);
-
-    // Configure Gyro and Accelerometer
-
-    //Configuro gyro y acacelerometro 1khz
-    buffer[0] = MPU6050_RA_CONFIG;
-    buffer[1] = 0x03;
-    I2C_Write_n_Bytes(buffer, 2);
-
-    // Seteo el tiempo de muestra gyroscope output rate/(1 + SMPLRT_DIV)
-    buffer[0] = MPU6050_RA_SMPLRT_DIV; // 200Hz
-    buffer[1] = 0x04;
-    I2C_Write_n_Bytes(buffer, 2);
-
-    // Seteo el gyroscopo a escala maxima
-    buffer[0] = MPU6050_RA_GYRO_CONFIG;
-    I2C_Write_n_Bytes(buffer, 1);
-
-    I2C_Read_n_Bytes(buffer, 1);
-    aux = buffer[0];
-    buffer[0] = MPU6050_RA_GYRO_CONFIG; // limpio self-test bits [7:5]
-    buffer[1] = (aux & ~0xE0);
-    I2C_Write_n_Bytes(buffer, 2);
-
-    buffer[0] = MPU6050_RA_GYRO_CONFIG; // limpio AFS bits [4:3]
-    buffer[1] = (aux & ~0x18);
-    I2C_Write_n_Bytes(buffer, 2);
-
-    buffer[0] = MPU6050_RA_GYRO_CONFIG;
-    buffer[1] = (aux | Gscale << 3); // Seteo a maxima escala
-    I2C_Write_n_Bytes(buffer, 2);
-
-    // Seteo el acelerometro
-    buffer[0] = MPU6050_RA_ACCEL_CONFIG;
-    I2C_Write_n_Bytes(buffer, 1);
-
-    I2C_Read_n_Bytes(buffer, 1);
-    aux = buffer[0];
-    buffer[0] = MPU6050_RA_ACCEL_CONFIG;
-    buffer[1] = (aux & ~0xE0); // limpio self-test bits [7:5]
-    I2C_Write_n_Bytes(buffer, 2);
-
-    buffer[0] = MPU6050_RA_ACCEL_CONFIG;
-    buffer[1] = (aux & ~0x18); // limpio AFS bits [4:3]
-    I2C_Write_n_Bytes(buffer, 2);
-
-    buffer[0] = MPU6050_RA_ACCEL_CONFIG;
-    buffer[1] = (aux | Ascale << 3); // Seteo a maxima escala el acelerometro
-    I2C_Write_n_Bytes(buffer, 2);
-
-    // Interrupciones y bypass
-    buffer[0] = MPU6050_RA_INT_PIN_CFG;
-    buffer[1] = 0x02;
-    I2C_Write_n_Bytes(buffer, 2);
-
-    buffer[0] = MPU6050_RA_INT_ENABLE;
-    buffer[1] = 0x01;
-    I2C_Write_n_Bytes(buffer, 2);
-
-    // Habilito FIFO
-    buffer[0] = MPU6050_RA_USER_CTRL;
-    I2C_Write_n_Bytes(buffer, 1);
-
-    I2C_Read_n_Bytes(buffer, 1);
-    aux = buffer[0];
-    buffer[0] = MPU6050_RA_USER_CTRL;
-    buffer[1] = (aux | 0x44);
-    I2C_Write_n_Bytes(buffer, 2);
-
-    buffer[0] = MPU6050_RA_USER_CTRL;
-    I2C_Write_n_Bytes(buffer, 1);
-    I2C_Read_n_Bytes(buffer, 1);
-    aux = buffer[0];
-
-    pr_info("[LOG USER CONTROL]0x%x\n", aux);
-
-    // Habilito los sensores hacia la FIFO
-    buffer[0] = MPU6050_RA_FIFO_EN;
-    buffer[1] = 0xF8;
-    I2C_Write_n_Bytes(buffer, 2);
-
-    buffer[0] = MPU6050_RA_FIFO_EN;
-    I2C_Write_n_Bytes(buffer, 1);
-    I2C_Read_n_Bytes(buffer, 1);
-    aux = buffer[0];
-
-    pr_info("[LOG RA FIFO EN]0x%x\n", aux);
+    platform_driver_error: return retval;
 }
 
-/**
- * @brief Funcion de lectura de los registros de data de la fifo
- * 
- * @return uint16_t 
- */
-static uint16_t MPU6050_Read_Data_Count_Fifo(void)
+static void __exit driver_bmp280_exit(void)
 {
-    uint16_t contador;
-    uint8_t *buffer_tx;
+    pr_info("[LOG] Saliendo del driver\n");
 
-    buffer_tx = kmalloc(sizeof(uint8_t), GFP_KERNEL);
+    platform_driver_unregister(&bmp280_driver);
+}
 
-    if (buffer_tx == NULL)
+module_init(driver_bmp280_init);
+module_exit(driver_bmp280_exit);
+
+/* Device tree functions */
+
+static int driver_bmp280_probe( struct platform_device *pdev )
+{
+    int retval = -1;
+
+    pr_info("[LOG] Inicializando el driver\n");
+
+    if((retval = i2c_sitara_init()) < 0)
     {
+        pr_err("[LOG] Error al inicializar el i2c\n");
+        goto i2c_sitara_error;
+    }
+
+    if((retval = bmp280_init()) < 0)
+    {
+        pr_err("[LOG] Error al inicializar el bmp280\n");
+        goto bmp280_error;
+    }
+
+    if((retval = char_device_create_bmp280()) < 0)
+    {
+        pr_err("[LOG] Error al crear el char device\n");
+        goto char_device_error;
+    }
+
+    pr_info("[LOG] Driver inicializado correctamente\n");
+
+    return 0;
+
+    char_device_error: char_device_remove();
+    bmp280_error: bmp280_deinit();
+    i2c_sitara_error: return retval;
+}
+
+static int driver_bmp280_remove( struct platform_device *pdev )
+{
+    pr_info("[LOG] Saliendo del driver\n");
+
+    char_device_remove();
+    i2c_sitara_exit();
+    bmp280_deinit();
+
+    return 0;
+}
+
+/* Static Functions */
+
+static int bmp280_init(void)
+{
+    uint8_t aux1 = 0;
+    uint8_t aux2 = 0;
+
+    if(bmp280_is_connected() < 0)
+    {
+        pr_err("[LOG] Error: El chip no está conectado\n");
+
         return -1;
     }
 
-    *buffer_tx = MPU6050_RA_FIFO_COUNTH;
-    I2C_Write_n_Bytes(buffer_tx, 1);
-    I2C_Read_n_Bytes(buffer_tx, 1);
-    pr_info("[LOG Count H]0x%x\n", *buffer_tx);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_MSB, NOMASK, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_LSB, NOMASK, &aux2);
 
-    contador = *buffer_tx;
+    dig_T1 = (aux1 << 8) | aux2;
 
-    *buffer_tx = MPU6050_RA_FIFO_COUNTL;
-    I2C_Write_n_Bytes(buffer_tx, 1);
-    I2C_Read_n_Bytes(buffer_tx, 1);
-    pr_info("[LOG Count L]0x%x\n", *buffer_tx);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_MSB, NOMASK, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_LSB, NOMASK, &aux2);
 
-    contador = contador << 8 | *buffer_tx;
+    dig_T2 = (aux1 << 8) | aux2;
 
-    kfree(buffer_tx);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_MSB, NOMASK, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_LSB, NOMASK, &aux2);
 
-    return contador;
+    dig_T3 = (aux1 << 8) | aux2;
+
+    bmp280_set_frequency(FREQ_1);
+    bmp280_set_mode(BMP280_NORMAL_MODE);
+
+    pr_info("[LOG] BMP280 configurado correctamente\n");
+
+    return 0;
+
 }
 
-// 
-// t_fine carries fine temperature as global value
-
-/// @brief Returns temperature in DegC, resolution is 0.01 DegC. Output value of “5123” equals 51.23 DegC.
-/// @param adc_T 
-/// @return 
-bmp280_temperature bmp280_compensate_t(bmp280_temperature adc_T)
+static void bmp280_deinit(void)
 {
-    bmp280_temperature var1, var2, T;
-    var1 = ((((adc_T>>3) – ((BMP280_S32_t)dig_T1<<1))) * ((BMP280_S32_t)dig_T2)) >> 11;
-    var2 = (((((adc_T>>4) – ((BMP280_S32_t)dig_T1)) * ((adc_T>>4) – ((BMP280_S32_t)dig_T1))) >> 12) *
-    ((BMP280_S32_t)dig_T3)) >> 14;
+    bmp280_set_mode(BMP280_SLEEP_MODE);
+}
+
+static int bmp280_is_connected(void)
+{
+    uint8_t data;
+
+    if(i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_ID,  NOMASK, &data) != BMP280_CHIP_ID)
+    {
+        pr_err("[LOG] Error: El chip no está conectado\n");
+
+        return -1;
+    }
+
+    return 0;
+}
+
+static int bmp280_set_frequency(bmp280_freq_t frequency)
+{
+    if(i2c_sitara_write(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_CONFIG, (uint8_t)frequency) < 0)
+    {
+        pr_err("[LOG] Error: No se pudo escribir en el registro\n");
+
+        return -1;
+    }
+
+    return 0;
+}
+
+static int bmp280_set_mode(bmp280_mode_t mode)
+{
+    if(i2c_sitara_write(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_CTRL_MEAS, (uint8_t)mode) < 0)
+    {
+        pr_err("[LOG] Error: No se pudo escribir en el registro\n");
+
+        return -1;
+    }
+
+    return 0;
+}
+
+static int bmp280_get_temperature(bmp280_temperature *temperature)
+{
+    int32_t data[3];
+    int32_t raw_temp;
+    int32_t var1, var2, t_fine;
+    uint8_t aux1 = 0;
+    uint8_t aux2 = 0;
+
+    if(temperature == NULL)
+    {
+        printk("[LOG] Error: temperature is NULL\n");
+
+        return -1;
+    }
+
+    if(i2c_sitara_is_connected(BMP280_SLAVE_ADDRESS) < 0)
+    {
+        printk("[LOG] Error: El i2c no está conectado\n");
+
+        return -1;
+    }
+
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_MSB, NOMASK, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_LSB, NOMASK, &aux2);
+
+    data[0]  = (int32_t)((aux1 << 8) | aux2);
+
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_MSB, NOMASK, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_LSB, NOMASK, &aux2);
+
+    data[1]  = (int32_t)((aux1 << 8) | aux2);
+
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_MSB, NOMASK, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_LSB, NOMASK, &aux2);
+
+    data[2]  = (int32_t)((aux1 << 8) | aux2);
+
+    if(data[0] < 0 || data[1] < 0 || data[2] < 0)
+    {
+        printk("[LOG] Error: i2c_sitara_read\n");
+
+        return -1;
+    }
+
+    raw_temp = (data[0] << 16) | (data[1] << 8) | (data[2] >> 4);
+    
+    var1 = ((((raw_temp >> 3) - (dig_T1 << 1))) * (dig_T2)) >> 11;
+    var2 = (((((raw_temp >> 4) - (dig_T1)) * ((raw_temp >> 4) - (dig_T1))) >> 12) * (dig_T3)) >> 14;
+
     t_fine = var1 + var2;
-    T = (t_fine * 5 + 128) >> 8;
-    return T;
+
+    *temperature = (t_fine * 5 + 128) >> 8;
+
+    return 0;
 }

@@ -6,5 +6,5 @@ typedef signed int int32_t;
 typedef unsigned char uint8_t;
 typedef signed char int8_t;
 
-#endif _TYPES_H_
+#endif //_COSTA_TYPES_H_
 

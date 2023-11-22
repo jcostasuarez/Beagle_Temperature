@@ -1,26 +1,14 @@
-#include "am335x-boneblack.dts"
+#include "am335x-boneblack.dtsi"
 
-#define AM33XX_IOPAD(offset, value) ((offset) - 0x800) | ((value) << 16)
-
-/* I2C2 controller */
 &i2c2 {
-    compatible = "ti,omap4-i2c";
-    ti,hwmods = "i2c3";
-    reg = <0x4819c000 0x1000>;
-    interrupts = <0x1e>;
+    clock-frequency = <100000>;
+    pinctrl-names = "default";
+    pinctrl-0 = <&i2c2_pins>;
     status = "okay";
-    pinmux = <&am33xx_pinmux>; /* Define the pinmux for this controller */
-    pin_scl = "default";
-    pin_sda = <&i2c2_pins>; /* Define the pin configuration */
-    clock-frequency = <0x186a0>;
-    
-    bmp_280@54 {
-        compatible = "bosch,bmp_280";
+
+    bmp280@76 {
+        compatible = "bosch,bmp280";
         reg = <0x76>;
         status = "okay";
-
-        bmp_280_data@0 {      
-            reg = <0x00 0x100>;
-        };
     };
 };
