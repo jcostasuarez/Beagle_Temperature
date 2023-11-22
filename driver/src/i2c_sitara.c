@@ -1,3 +1,14 @@
+/**
+ * @file i2c_sitara.c
+ * @author Juan Costa Suárez (jcostasurez@frba.utn.edu.ar)
+ * @brief Este módulo contiene las funciones para el manejo del bus I2C2 del Sitara
+ * @version 0.1
+ * @date 2023-11-22
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
+
 /*Funciones principales*/
 #include "i2c_sitara.h"
 
@@ -156,12 +167,11 @@ int i2c_sitara_exit(void)
 }
 
 /**
- * @brief 
- * 
- * @param slave_address 
- * @param slave_register 
- * @param mask 
- * @param data 
+ * @brief Esta función lee un registro de un esclavo i2c, usando el bus i2c2, del Sitara y lo guarda en data antes de pasar por la máscara
+ * @param slave_address Dirección del esclavo
+ * @param slave_register Dirección del registro a leer
+ * @param mask Máscara de bits a aplicar
+ * @param data Puntero a la variable donde se guardará el dato
  * @return int 
  */
 int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask, uint8_t *data)
@@ -247,12 +257,10 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
 }
 
 /**
- * @brief 
- * 
- * @param slave_address 
- * @param slave_register 
- * @param mask 
- * @param data 
+ * @brief Esta función escribe un registro de un esclavo i2c, usando el bus i2c2, del Sitara
+ * @param slave_address Dirección del esclavo
+ * @param slave_register Dirección del registro a escribir
+ * @param data Dato a escribir
  * @return int 
  */
 int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t data)
@@ -666,8 +674,4 @@ static int i2c_reset_fifos(void)
     return ret_val;
 }
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Juan Costa Suárez");
-MODULE_DESCRIPTION("Driver para el sensor bmp280, usando i2c2, y Beaglebone Black");
-MODULE_VERSION("1.0");
 

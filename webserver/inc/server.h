@@ -5,13 +5,17 @@
     #include <stdlib.h>
     #include <unistd.h>
     #include <string.h>
-    #include <sys/types.h>
-    #include <sys/socket.h>
+    #include <errno.h>
+    #include <semaphore.h>
+
     #include <netinet/in.h>
     #include <arpa/inet.h>
-    #include <errno.h>
+    
+    #include <sys/types.h>
+    #include <sys/socket.h>
+    #include <sys/ipc.h>
+    #include <sys/shm.h>
+
     #define MAX_CONN 10 //Nro maximo de conexiones en espera
-
-    void ProcesarCliente(int s_aux, struct sockaddr_in *pDireccionCliente, int puerto);
-
+    
 #endif

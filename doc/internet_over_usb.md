@@ -1,3 +1,5 @@
+sshpass -p temppwd ssh debian@192.168.7.2
+
 en bbb:
 sudo ifconfig usb0 192.168.7.2
 sudo route add default gw 192.168.7.1

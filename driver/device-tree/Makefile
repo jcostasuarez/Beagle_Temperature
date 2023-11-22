@@ -1,3 +1,7 @@
+#
+# Makefile for the device tree file
+# brief: This file is used to compile the device tree file and move it to the destination directory
+
 # Specify the source file and output file names
 SRC := am335x-boneblack.dts
 OUT := am335x-boneblack.dtb

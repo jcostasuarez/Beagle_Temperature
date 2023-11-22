@@ -1,3 +1,14 @@
+/**
+ * @file types.h
+ * @author Juan Costa Suárez (jcostasurez@frba.utn.edu.ar)
+ * @brief Definición de tipos de datos
+ * @version 0.1
+ * @date 2023-11-22
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
+
 #ifndef _COSTA_TYPES_H_
 #define _COSTA_TYPES_H_
 

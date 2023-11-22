@@ -1,3 +1,14 @@
+/**
+ * @file i2c_sitara.h
+ * @author Juan Costa Suárez (jcostasurez@frba.utn.edu.ar)
+ * @brief Definición de funciones y estructuras para el manejo del módulo I2C de la BeagleBone Black
+ * @version 0.1
+ * @date 2023-11-22
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
+
 #ifndef __I2C_COSTA_H
 #define __I2C_COSTA_H
 

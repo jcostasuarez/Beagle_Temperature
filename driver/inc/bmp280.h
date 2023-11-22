@@ -1,3 +1,14 @@
+/**
+ * @file bmp280.h
+ * @author Juan Costa Suárez (jcostasurez@frba.utn.edu.ar)
+ * @brief Definición de funciones y estructuras para el manejo del sensor BMP280
+ * @version 0.1
+ * @date 2023-11-22
+ * 
+ * @copyright Copyright (c) 2023
+ * 
+ */
+
 #ifndef __BMP280_H
 #define __BMP280_H
 
@@ -16,7 +27,6 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/of_device.h>
-
 
 #include "types.h"
 
