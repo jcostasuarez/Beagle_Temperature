@@ -1,15 +1,68 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Temperatura</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <!-- <link rel="stylesheet" href="/public/css/style.css"> -->
+    <title>Sensor BMP</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <div class="header">
-    <h1>Temperatura</h1>
-  </div>
-  <p>El contenido de la página web.</p>
+    <div class="header">
+        <h1>Sensor BMP280</h1>
+        <h2>UTN 2023</h2>
+        <p>Autor: Juan Costa Suárez | 172.031.4</p>
+        <p id="date">Fecha: </p>
+    </div>
+    <img class="logo" src="logo-utn-frba.png" alt="Image-Missing">
+    <script>
+        document.getElementById('date').innerHTML += new Date().toLocaleDateString();
+    </script>
+
+    <canvas id="myChart"></canvas>
+    <script>
+        var ctx = document.getElementById('myChart').getContext('2d');
+        var myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                        labels: [],  // Empty array for labels
+                        datasets: [{
+                                label: 'Temperature',
+                                data: [],  // Empty array for data
+                                fill: false,
+                                borderColor: 'rgb(200, 200, 200)',
+                                tension: 0.1
+                        }]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            grid: {
+                                color: 'rgba(0, 0, 0, 1)',  // Change grid color for x-axis
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(0, 0, 0, 1)',  // Change grid color for y-axis
+                            }
+                        }
+                    }
+                }
+        });
+        var serverIP = window.location.hostname;
+
+        // Send a fetch request to your C server
+        fetch('http://192.168.7.2:8090/GetData')
+                .then(response => response.json())
+                .then(data => {
+                        // Update the chart with the response data
+                        myChart.data.labels = data.time;
+                        myChart.data.datasets[0].data = data.temp;
+                        myChart.update();
+                })
+                .catch(error => console.error('Error:', error));
+    </script>
+
+    <p>Temperatura[ºC]: <span id="temp"></span></p>
 </body>
 </html>
-
+</html>

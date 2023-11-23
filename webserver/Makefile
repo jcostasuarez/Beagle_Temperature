@@ -9,7 +9,7 @@ OBJ := $(SRC:$(SRC_DIR)/%.c=$(OBJ_DIR)/%.o)
 CPPFLAGS := -Iinclude -MMD -MP
 CFLAGS   := -Wall
 LDFLAGS  := -Llib
-LDLIBS   := -lm
+LDLIBS   := -lm -lpthread -lrt
 
 .PHONY: all clean
 
@@ -28,6 +28,6 @@ clean:
 	@$(RM) -rv $(BIN_DIR) $(OBJ_DIR)
 
 exec:
-	./bin/webserver 8080
+	./bin/webserver 8090
 
 -include $(OBJ:.o=.d)

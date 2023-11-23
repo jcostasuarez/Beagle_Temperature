@@ -21,6 +21,8 @@
 #include <unistd.h>
 #include <sys/socket.h>
 
+#define SAVED_DATA_VECTOR_SIZE 20
+
 int ProcesarCliente(int s_aux, struct sockaddr_in *pDireccionCliente, int puerto, shared_buffer *buffer) ;
 
 #endif // SERVER_CLIENT_H

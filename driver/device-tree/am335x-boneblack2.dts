@@ -1424,8 +1424,8 @@
 			phandle = < 0xad >;
 		};
 
-		i2c_sitara@4819c000 {
-			compatible = "bosch,bmp280";
+		i2c_juan@4819c000 {
+			compatible = "bmp280_sitara";
 			#address-cells = < 0x01 >;
 			#size-cells = < 0x00 >;
 			ti,hwmods = "i2c3";

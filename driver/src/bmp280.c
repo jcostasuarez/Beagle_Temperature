@@ -18,18 +18,20 @@
 
 #define MINOR_NUMBER 0
 #define NUMBER_OF_DEVICES 1
-#define DEVICE_CLASS_NAME "temp_sensor"
-#define DEVICE_NAME "bmp280"
+#define DEVICE_CLASS_NAME "temp"
+#define DEVICE_NAME "bmp280_sitara"
 
 /* Static variables */
 
-static char* device_name = NULL;
-static dev_t device_number;
 static struct class *device_class;
-static struct cdev my_device;
+static dev_t device_number;
+static struct cdev *char_device;
+
 static uint32_t dig_T1;
 static int32_t dig_T2;
 static int32_t dig_T3;
+
+static volatile int bmp_working = False;
 
 /* Private functions prototypes */
 
@@ -54,6 +56,7 @@ static int bmp280_is_connected(void);
 static int bmp280_set_frequency(bmp280_freq_t frequency);
 static int bmp280_set_mode(bmp280_mode_t mode);
 static int bmp280_get_temperature(bmp280_temperature *temperature);
+static int driver_is_opened(void );
 
 /* Static variables*/
 
@@ -62,7 +65,7 @@ static int bmp280_get_temperature(bmp280_temperature *temperature);
 static struct of_device_id bmp280_of_match[] = 
 {
     {
-        .compatible = "bosch,bmp280",
+        .compatible = DEVICE_NAME,
     },
     {},
 };
@@ -74,7 +77,7 @@ static struct platform_driver bmp280_driver =
     .driver = 
     {
         .name = DEVICE_NAME,
-        .of_match_table = bmp280_of_match,
+        .of_match_table = of_match_ptr(bmp280_of_match),
     },
 };
 
@@ -93,7 +96,8 @@ static const struct file_operations bmp280_fops =
 MODULE_DEVICE_TABLE(of, bmp280_of_match);
 module_init(driver_bmp280_init);
 module_exit(driver_bmp280_exit);
-MODULE_LICENSE("GPL");
+
+MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Juan Costa Suárez");
 MODULE_DESCRIPTION("Driver para el sensor bmp280, usando i2c2, y Beaglebone Black");
 MODULE_VERSION("1.0");
@@ -109,10 +113,38 @@ int char_device_create_bmp280(void)
 
     printk(KERN_INFO "Creando el char device\n");
 
-    if((retval = alloc_chrdev_region(&device_number, MINOR_NUMBER, NUMBER_OF_DEVICES, DEVICE_NAME)) != 0)
+    //cdev_alloc
+
+    char_device = cdev_alloc();
+
+    if (char_device == NULL)
+    {
+        pr_err("[INIT] ERR: TD3_I2C fallo cdev_alloc() (%s %d)\n", __FUNCTION__, __LINE__);
+        return -1;
+    }
+
+    printk(KERN_INFO "cdev_alloc() OK!\n");
+
+    //alloc_chrdev_region
+
+    if(alloc_chrdev_region(&device_number, MINOR_NUMBER, NUMBER_OF_DEVICES, DEVICE_NAME) < 0)
     {
         printk(KERN_ERR "Error al reservar el device number\n");
+        retval = -1;
         goto kmalloc_error;
+    }
+
+    printk(KERN_INFO "Device number reservado correctamente\n");
+
+    cdev_init(char_device, &bmp280_fops);
+    
+    printk(KERN_INFO "cdev_init() OK!\n");
+
+    if(cdev_add(char_device, device_number, NUMBER_OF_DEVICES) < 0)
+    {
+        printk(KERN_ERR "Error al agregar el device\n");
+        retval = -1;
+        goto device_error;
     }
 
     if((device_class = class_create(THIS_MODULE, DEVICE_CLASS_NAME)) == NULL)
@@ -122,20 +154,13 @@ int char_device_create_bmp280(void)
         goto chrdev_error;
     }
 
-    if(device_create(device_class, NULL, device_number, NULL, device_name) == NULL)
+    printk(KERN_INFO "Device class creado correctamente\n");
+
+    if(device_create(device_class, NULL, device_number, NULL, DEVICE_NAME) == NULL)
     {
         printk(KERN_ERR "Error al crear el device\n");
         retval = -1;
         goto class_error;
-    }
-
-    cdev_init(&my_device, &bmp280_fops);
-
-    if(cdev_add(&my_device, device_number, NUMBER_OF_DEVICES) < 0)
-    {
-        printk(KERN_ERR "Error al agregar el device\n");
-        retval = -1;
-        goto device_error;
     }
 
     printk(KERN_INFO "Char device creado correctamente\n");
@@ -144,8 +169,8 @@ int char_device_create_bmp280(void)
 
     device_error: device_destroy(device_class, device_number);
     class_error: class_destroy(device_class);
-    chrdev_error: unregister_chrdev(device_number, device_name);
-    kmalloc_error: kfree(device_name);
+    chrdev_error: unregister_chrdev(device_number, DEVICE_NAME);
+    kmalloc_error: kfree(DEVICE_NAME);
     return retval;
 }   
 
@@ -156,11 +181,11 @@ void char_device_remove(void)
 {
     pr_info("[LOG] Removing char device.\n");
 
-    cdev_del(&my_device);
+    cdev_del(char_device);
     device_destroy(device_class, device_number);
     class_destroy(device_class);
-    unregister_chrdev(device_number, device_name);
-    kfree(device_name);
+    unregister_chrdev(device_number, DEVICE_NAME);
+    kfree(DEVICE_NAME);
 }
 
 /* Private functions */
@@ -171,6 +196,12 @@ static int char_bmp280_open(struct inode *inode, struct file *file)
 {
     pr_info("[LOG] Abriendo el archivo\n");
 
+    if(driver_is_opened() == False)
+    {
+        printk("El driver no está abierto\n");
+        return -1;
+    }
+
     if(!bmp280_is_connected()) 
     {
         printk("Couldn't open device.\n");
@@ -180,7 +211,7 @@ static int char_bmp280_open(struct inode *inode, struct file *file)
     return 0;
 }
 
-int char_bmp280_close(struct inode *inode, struct file *file)
+static int char_bmp280_close(struct inode *inode, struct file *file)
 {
     pr_info("[LOG] Cerrando el archivo\n");
 
@@ -188,7 +219,7 @@ int char_bmp280_close(struct inode *inode, struct file *file)
     return 0;
 }
 
-ssize_t char_bmp280_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
+static int char_bmp280_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
 {
     bmp280_temperature temperature;
 
@@ -211,7 +242,7 @@ ssize_t char_bmp280_read(struct file *file, char __user *buf, size_t len, loff_t
     return 0;
 }
 
-ssize_t char_bmp280_write(struct file *file, const char __user *buf, size_t len, loff_t *offset)
+static int char_bmp280_write(struct file *file, const char __user *buf, size_t len, loff_t *offset)
 {
     pr_info("[LOG] Escribiendo el archivo\n");
 
@@ -220,9 +251,15 @@ ssize_t char_bmp280_write(struct file *file, const char __user *buf, size_t len,
 
 static int __init driver_bmp280_init(void)
 {
-    int retval = -1;
+    int retval = 0;
 
     printk(KERN_INFO "Inicializando el driver\n");
+
+    if((retval = char_device_create_bmp280()) < 0)
+    {
+        printk(KERN_ERR "Error al crear el char device\n");
+        goto char_device_error;
+    }
 
     if((retval = platform_driver_register(&bmp280_driver)) < 0)
     {
@@ -234,12 +271,16 @@ static int __init driver_bmp280_init(void)
 
     return 0;
 
-    platform_driver_error: return retval;
+    platform_driver_error: char_device_remove();
+    char_device_error: return -1;
+
 }
 
 static void __exit driver_bmp280_exit(void)
 {
     printk(KERN_INFO "Saliendo del driver\n");
+
+    char_device_remove();
 
     platform_driver_unregister(&bmp280_driver);
 
@@ -250,6 +291,7 @@ static void __exit driver_bmp280_exit(void)
 
 static int driver_bmp280_probe( struct platform_device *pdev )
 {
+
     int retval = -1;
 
     printk(KERN_INFO "Inicializando probe.\n");
@@ -266,19 +308,14 @@ static int driver_bmp280_probe( struct platform_device *pdev )
         goto bmp280_error;
     }
 
-    if((retval = char_device_create_bmp280()) < 0)
-    {
-        printk(KERN_ERR "Error al crear el char device\n");
-        goto char_device_error;
-    }
-
     printk(KERN_INFO "Probe completado\n");
+
+    bmp_working = True;
 
     return 0;
 
-    char_device_error: char_device_remove();
-    bmp280_error: bmp280_deinit();
-    i2c_sitara_error: return retval;
+    bmp280_error: i2c_sitara_exit();
+    i2c_sitara_error: return -1;
 }
 
 static int driver_bmp280_remove( struct platform_device *pdev )
@@ -368,6 +405,11 @@ static int bmp280_set_mode(bmp280_mode_t mode)
     }
 
     return 0;
+}
+
+static int driver_is_opened(void )
+{
+    return bmp_working;
 }
 
 static int bmp280_get_temperature(bmp280_temperature *temperature)

@@ -9,9 +9,12 @@
  * 
  */
 
-#include <arpa/inet.h> // Add this line to include the header file
-
 #include "../inc/server_client.h"
+#include "../inc/buffer.h"
+
+#include <arpa/inet.h> // Add this line to include the header file
+#include <time.h>
+#include <stdbool.h>
 
 #define BUFFER_COMUNIC_SIZE 16384
 #define IP_ADDR_SIZE 20
@@ -19,13 +22,16 @@
 #define HTML_HEADER_SIZE 4096
 
 #define FILE_HTML_HEADER_ADDR  "public/html/header.html\0"
-//#define FILE_CSS_ADDR "public/css/style.css\0"
+#define FILE_CSS_ADDR "public/css/style.css\0"
 //#define FILE_HTML_BODY_ADDR "public/html/body.html\0"
 //#define FILE_HTML_FOOTER_ADDR "public/html/footer.html\0"
 
 /*Funciones privadas*/
 
 static int get_string_from_file(char *file_name, char *string);
+static void send_png(int client_socket, const char *file_path, const char *content_type);
+static void send_response(int client_socket, const char *response);
+static void generate_json(char *json, float * temp_data, float * time_data, int size);
 
 /*Funciones de la biblioteca*/
 
@@ -40,98 +46,143 @@ static int get_string_from_file(char *file_name, char *string);
  */
 int ProcesarCliente(int s_aux, struct sockaddr_in *pDireccionCliente, int puerto, shared_buffer *buffer)
 {
-    char bufferComunic[BUFFER_COMUNIC_SIZE];
-    char ipAddr[IP_ADDR_SIZE];
-    int Port;
-    float tempCelsius;
-    int Mensaje_Valido = 0;
-    char HTML[HTML_SIZE];
-    char encabezadoHTML[HTML_HEADER_SIZE];
+  char bufferComunic[BUFFER_COMUNIC_SIZE];
+  char ipAddr[IP_ADDR_SIZE];
+  int Port;
+  float tempCelsius;
+  char HTML[HTML_SIZE];
+  char encabezadoHTML[HTML_HEADER_SIZE];
 
-    strcpy(ipAddr, inet_ntoa(pDireccionCliente->sin_addr));
-    Port = ntohs(pDireccionCliente->sin_port);
+  float time[BUFFER_SIZE];
+  float temp[BUFFER_SIZE];
 
-    // Recibe el mensaje del cliente
-    if (recv(s_aux, bufferComunic, sizeof(bufferComunic), 0) == -1)
+  strcpy(ipAddr, inet_ntoa(pDireccionCliente->sin_addr));
+  Port = ntohs(pDireccionCliente->sin_port);
+
+  // Recibe el mensaje del cliente
+  if (recv(s_aux, bufferComunic, sizeof(bufferComunic), 0) == -1)
+  {
+    fprintf(stderr, "Error en recv");
+    return -1;
+  }
+  printf("* Recibido del navegador Web %s:%d:\n%s\n",
+          ipAddr, Port, bufferComunic);
+
+  // Obtiene la temperatura del buffer
+  
+  if (buffer_avg(buffer, &tempCelsius))
+  {
+    fprintf(stderr, "Error en buffer_avg");
+    return -1;
+  }
+
+  // Cargo el vector time con datos del buffer
+
+  for(int i = 0; i < BUFFER_SIZE; i++)
+  {
+    if (buffer_get_time(buffer, i, &time[i]))
     {
-        fprintf(stderr, "Error en recv");
-        return -1;
+      fprintf(stderr, "Error en buffer_get_time");
+      return -1;
     }
-    printf("* Recibido del navegador Web %s:%d:\n%s\n",
-           ipAddr, Port, bufferComunic);
+  }
 
-    printf("* Obteniendo la temperatura del buffer...\n");
-    printf("direccion de buffer: %p\n", buffer);
+  // Cargo el vector temp con datos del buffer
 
-    // Obtiene la temperatura del buffer
-
-    print_buffer(buffer);
-        
-    if (buffer_get(buffer, &tempCelsius))
+  for(int i = 0; i < BUFFER_SIZE; i++)
+  {
+    if (buffer_get_temp(buffer, i, &temp[i]))
     {
-        fprintf(stderr, "Error en buffer_get");
-        return -1;
+      fprintf(stderr, "Error en buffer_get_temp");
+      return -1;
     }
-    printf("* Temperatura obtenida del buffer: %f\n", tempCelsius);
+  }
 
-    // Obtengo el promedio de los datos del buffer
+  // Comparamos el mensaje recibido con el mensaje esperado
+  // Genera el mensaje a enviar al cliente
 
-    if (buffer_avg(buffer, &tempCelsius))
+  if (get_string_from_file(FILE_HTML_HEADER_ADDR, encabezadoHTML))
+  {
+    fprintf(stderr, "Error en get_sting_from_file");
+    return -1;
+  }
+
+  if(strstr(bufferComunic, "GET / HTTP/1.1") != NULL)
+  {
+    sprintf(HTML,
+            "%s<p>%f grados Celsius equivale a %f grados Fahrenheit</p>",
+            encabezadoHTML, tempCelsius, tempCelsius * 1.8 + 32);
+    
+    sprintf(bufferComunic,
+    "HTTP/1.1 200 OK\n"
+    "Content-Length: %ld\n"
+    "Content-Type: text/html; charset=utf-8\n"
+    "Connection: Closed\n\n%s",
+    strlen(HTML), HTML);
+  }
+
+  else if(strstr(bufferComunic, "GET /styles.css HTTP/1.1") != NULL)
+  {
+    if (get_string_from_file(FILE_CSS_ADDR, HTML))
     {
-        fprintf(stderr, "Error en buffer_avg");
-        return -1;
-    }
-    printf("* Promedio de los datos del buffer: %f\n", tempCelsius);
-
-    // Valida el mensaje recibido
-
-    if(strstr(bufferComunic, "GET /gradosCelsius HTTP/1.1") != NULL)
-    {
-        Mensaje_Valido = 1;
-    }
-
-    // Genera el mensaje a enviar al cliente
-
-    if (get_string_from_file(FILE_HTML_HEADER_ADDR, encabezadoHTML))
-    {
-        fprintf(stderr, "Error en get_sting_from_file");
-        return -1;
-    }
-
-    if (Mensaje_Valido)
-    {
-        sprintf(HTML,
-                "%s<p>%f grados Celsius equivale a %f grados Fahrenheit</p>",
-                encabezadoHTML, tempCelsius, tempCelsius * 1.8 + 32);
-    }
-    else
-    {
-        sprintf(HTML,
-                "%s<p>El URL debe ser http://dominio:%d/gradosCelsius.</p>",
-                encabezadoHTML, puerto);
+      fprintf(stderr, "Error buscando el archivo css\n");
+      return -1;
     }
 
     sprintf(bufferComunic,
-            "HTTP/1.1 200 OK\n"
-            "Content-Length: %ld\n"
-            "Content-Type: text/html; charset=utf-8\n"
-            "Connection: Closed\n\n%s",
-            strlen(HTML), HTML);
+    "HTTP/1.1 200 OK\n"
+    "Content-Length: %ld\n"
+    "Content-Type: text/css; charset=utf-8\n"
+    "Connection: Closed\n\n%s",
+    strlen(HTML), HTML);
+  }
+  else if(strstr(bufferComunic, "GET /logo-utn-frba.png HTTP/1.1") != NULL)
+  {
+    send_png(s_aux, "public/image/logo-utn-frba.png", "image/png");
 
-    printf("* Enviado al navegador Web %s:%d:\n%s\n",
-           ipAddr, Port, bufferComunic);
-
-    // Envia el mensaje al cliente
-    if (send(s_aux, bufferComunic, strlen(bufferComunic), 0) == -1)
-    {
-        fprintf(stderr, "Error en send");
-        return -1;
-    }
-
-    // Cierra la conexion con el cliente actual
     close(s_aux);
 
     return 0;
+  }
+  else if(strstr(bufferComunic, "GET /GetData HTTP/1.1") != NULL)
+  {
+    
+    char json[1024];
+    
+    generate_json(json, temp, time, BUFFER_SIZE);
+
+    sprintf(bufferComunic, 
+    "HTTP/1.1 200 OK\n"
+    "Content-Length: %ld\n"
+    "Content-Type: application/json; charset=utf-8\n"
+    "Connection: Closed\n\n%s",
+    strlen(json), json);
+  }
+  else
+  {
+    // Mensaje de error
+    sprintf(bufferComunic,
+            "HTTP/1.1 404 Not Found\n"
+            "Content-Length: 0\n"
+            "Content-Type: text/html; charset=utf-8\n"
+            "Connection: Closed\n\n");
+
+    printf("Mensaje de error\n");
+  }
+
+  //printf("* Enviado al navegador Web %s:%d:\n%s\n",ipAddr, Port, bufferComunic);
+
+  // Envia el mensaje al cliente
+  if (send(s_aux, bufferComunic, strlen(bufferComunic), 0) == -1)
+  {
+      fprintf(stderr, "Error en send");
+      return -1;
+  }
+
+  // Cierra la conexion con el cliente actual
+  close(s_aux);
+
+  return 0;
 }
 
 
@@ -163,4 +214,80 @@ static int get_string_from_file(char *file_name, char *string)
   }
 
   return 0;
+}
+
+static void send_png(int client_socket, const char *file_path, const char *content_type)
+{
+  FILE *file = NULL;
+  char *png_buffer = NULL;
+  int file_size = 0;
+
+  file = fopen(file_path, "rb");
+
+  if (file == NULL)
+  {
+    fprintf(stderr, "Error al abrir el archivo %s\n", file_path);
+    return;
+  }
+
+  fseek(file, 0, SEEK_END);
+  file_size = ftell(file);
+  rewind(file);
+
+  png_buffer = (char *)malloc(sizeof(char) * file_size);
+
+  if (png_buffer == NULL)
+  {
+    fprintf(stderr, "Error al reservar memoria para el png_buffer\n");
+    return;
+  }
+
+  fread(png_buffer, sizeof(char), file_size, file);
+
+  fclose(file);
+
+  send_response(client_socket, "HTTP/1.1 200 OK\n");
+  send_response(client_socket, "Content-Type: image/png\n");
+  send_response(client_socket, "Connection: Closed\n");
+  send_response(client_socket, "\n");
+
+  send(client_socket, png_buffer, file_size, 0);
+
+  free(png_buffer);
+}
+
+
+static void send_response(int client_socket, const char *response)
+{
+  send(client_socket, response, strlen(response), 0);
+}
+
+static void generate_json(char *json, float * temp_data, float * time_data, int size)
+{
+  char temp[256], time[256];
+
+  // Start the JSON string
+  strcpy(json, "{\"temp\":[");
+  
+  // Add the temperature data to the JSON string
+  for (int i = 0; i < size; i++) {
+      sprintf(temp, "%.2f", temp_data[i]);
+      strcat(json, temp);
+      if (i < size - 1) {
+          strcat(json, ",");
+      }
+  }
+  
+  // Add the time data to the JSON string
+  strcat(json, "],\"time\":[");
+  for (int i = 0; i < size; i++) {
+      sprintf(time, "%.2f", time_data[i]);
+      strcat(json, time);
+      if (i < size - 1) {
+          strcat(json, ",");
+      }
+  }
+  
+  // End the JSON string
+  strcat(json, "]}");
 }

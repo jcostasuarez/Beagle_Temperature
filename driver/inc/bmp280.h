@@ -24,8 +24,6 @@
 #include <linux/slab.h>
 
 #include <linux/init.h>
-#include <linux/module.h>
-#include <linux/platform_device.h>
 #include <linux/of_device.h>
 
 #include "types.h"
@@ -62,6 +60,12 @@
 /*Typedef*/
 
 /*Enums*/
+
+enum bool
+{
+    False = 0,
+    True = 1
+};
 
 typedef enum bmp280_mode
 {
