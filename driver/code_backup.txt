@@ -1,0 +1,81 @@
+/**
+ * @brief 
+ * 
+ * @return int 
+ */
+int i2c_sitara_init()
+{
+    int ret_val = 0;
+
+    /*Configuro los registros del i2c*/
+    i2c2_registers = ioremap(I2C_SITARA_I2C2_BASE, I2C_SITARA_I2C2_SIZE);
+
+    if(i2c2_registers == NULL)
+    {
+        printk(KERN_ERR "Error al mapear la memoria de i2c2_registers\n");
+        iounmap(i2c2_registers);
+        return -ENOMEM;
+    }
+    
+    printk(KERN_INFO "i2_sitara_init: i2c2_registers = %p\n", i2c2_registers);
+
+    /*Configuro el clock de periféricos*/
+    if((ret_val = i2c_sitara_turn_on_peripheral()) != 0)
+    {
+        printk( KERN_ERR "Error al configurar el clock de periféricos\n");
+        iounmap(i2c2_registers);
+        return ret_val;
+    }
+
+    printk(KERN_INFO "i2_sitara_init: i2c_sitara_config_peripheral_clock() OK!\n" );
+
+    /*Configuro los pines del I2C2*/
+
+    
+    if((ret_val = i2c_sitara_config_pinmux()) != 0)
+    {
+        printk( KERN_ERR "Error al configurar los pines del I2C2\n");
+        iounmap(i2c2_registers);
+        return ret_val;
+    }
+
+    printk(KERN_INFO "i2_sitara_init: i2c_sitara_config_pinmux() OK!\n" );
+    */
+
+    /*Configuro el clock del I2C2*/
+
+    if((ret_val = i2c_sitara_config_clock()))
+    {
+        printk( KERN_ERR "Error al configurar el clock del I2C2\n");
+        iounmap(i2c2_registers);
+        return ret_val;
+    }
+
+    printk(KERN_INFO "i2_sitara_init: i2c_sitara_config_clock() OK!\n" );
+
+    /*Configuro las interrupciones del I2C2*/
+
+    if((ret_val = i2c_sitara_config_interrupts()) != 0)
+    {
+        printk( KERN_ERR "Error al configurar las interrupciones del I2C2\n");
+        iounmap(i2c2_registers);
+        return ret_val;
+    }
+    printk(KERN_INFO "i2_sitara_init: i2c_sitara_config_interrupts() OK!\n" );
+
+    /*Configuro los registros del I2C2 y habilito el bus*/
+    ret_val = i2c_sitara_config_regs();
+
+    if(ret_val != 0)
+    {
+        printk( KERN_ERR "Error al configurar los registros del I2C2\n");
+        iounmap(i2c2_registers);
+        return ret_val;
+    }
+
+    printk(KERN_INFO "i2_sitara_init: i2c_sitara_config_regs() OK!\n" );
+
+    printk(KERN_INFO "Inicialización de i2c2 exitosa\n");
+
+    return ret_val;
+}

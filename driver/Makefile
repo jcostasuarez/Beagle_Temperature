@@ -4,7 +4,7 @@
 
 EXTRA_CFLAGS := -I$(src)/inc
 
-bmp280_sitara-objs := src/bmp280.o src/i2c_sitara.o
+bmp280_sitara-objs := src/bmp280.o src/i2c_sitara.o	src/bmp280_cdevice.o src/driver.o src/utils.o
 
 obj-m += bmp280_sitara.o
 
@@ -19,9 +19,6 @@ device_tree:
 	cd device-tree && make all
 
 install_module:
-	sudo rmmod bmp280_i2c
-	sudo rmmod bmp280_spi
-	sudo rmmod bmp280
 	sudo insmod bmp280_sitara.ko
 
 remove_module:
@@ -43,4 +40,5 @@ copy_to_board:
 	sshpass -p temppwd ssh debian@192.168.7.2 "rm -rf tp_td3"
 	sshpass -p temppwd scp -r $(PWD) debian@192.168.7.2:/home/debian/tp_td3
 	sshpass -p temppwd ssh debian@192.168.7.2
-
+open_dmesg_board:
+	sshpass -p temppwd ssh debian@192.168.7.2 "dmesg -wH"

@@ -22,9 +22,11 @@
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
-
-#include <linux/init.h>
 #include <linux/of_device.h>
+#include <linux/init.h>
+#include <linux/types.h>
+#include <linux/of.h>
+
 
 #include "types.h"
 
@@ -134,9 +136,62 @@ typedef uint8_t bmp280_u8t;
 
 /*Prototipos de funciones*/
 
-/// @brief Creates the char device
-/// @param void
-/// @return "0"on success, non zero error code on error.
-int char_device_create_bmp280(void);
+/**
+ * @brief 
+ * 
+ * @param temperature 
+ * @return int 
+ */
+int bmp280_get_temperature(bmp280_temperature *temperature);
+
+/**
+ * @brief 
+ * 
+ * @return int 
+ */
+int bmp280_init(void);
+
+/**
+ * @brief 
+ * 
+ */
+void bmp280_deinit(void);
+
+/**
+ * @brief 
+ * 
+ * @return int 
+ */
+int bmp280_is_connected(void);
+
+/**
+ * @brief 
+ * 
+ * @return int 
+ */
+int bmp_is_running(void);
+
+/**
+ * @brief 
+ * 
+ * @return int 
+ */
+int bmp_set_running(void);
+
+/**
+ * @brief 
+ * 
+ * @param frequency 
+ * @return int 
+ */
+int bmp280_set_frequency(bmp280_freq_t frequency);
+
+/**
+ * @brief 
+ * 
+ * @param mode 
+ * @return int 
+ */
+int bmp280_set_mode(bmp280_mode_t mode);
 
 #endif // __GY_BMP280_H
