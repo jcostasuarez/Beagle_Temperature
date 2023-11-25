@@ -46,8 +46,8 @@ static volatile int irq_number = 0;
 
 static volatile int global_data[2] = {0,0};
 
-static volatile recieve_ready = 0;
-static volatile transmit_ready = 0;
+static volatile int recieve_ready = 0;
+static volatile int transmit_ready = 0;
 
 /******** Funciones públicas ********/
 
@@ -251,26 +251,25 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
     printk(KERN_INFO "i2c_sitara_read: i2c_sitara_start() OK!\n" );
 
     // pool bus
-    ret_val = pool_register(&recieve_ready, 1, 1, 1000);
-    if(ret_val != 0)
-    {
-        printk(KERN_ERR "i2c_sitara_read: Error al esperar la interrupción de bus libre\n");
-        return ret_val;
-    }
+    //ret_val = pool_register(&recieve_ready, 1, 1, 1000);
+    //if(ret_val != 0)
+    //{
+    //    printk(KERN_ERR "i2c_sitara_read: Error al esperar la interrupción de bus libre\n");
+    //    return ret_val;
+    //}
+    //recieve_ready = 0;
+
+    msleep(4);
 
     printk(KERN_INFO "i2c_sitara_read: Pool: OK!\n" );
 
-    recieve_ready = 0;
-
     /*Read buffer*/
 
-    *data = ioread32(i2c2_registers+I2C_SITARA_DATA);
-
-    printk(KERN_INFO "i2c_sitara_read: raw data = %d\n", *data);
+    *data = global_data[0];
 
     *data = *data & mask;
 
-    printk(KERN_INFO "i2c_sitara_read: masked data = %d\n", *data);
+    printk(KERN_INFO "i2c_sitara_read: masked data = %x\n", *data);
 
     printk(KERN_INFO "i2c_sitara_read: Lectura exitosa\n");
 
