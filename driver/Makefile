@@ -8,7 +8,7 @@ bmp280_sitara-objs := src/bmp280.o src/i2c_sitara.o	src/bmp280_cdevice.o src/dri
 
 obj-m += bmp280_sitara.o
 
-all: clean compile 
+all: clean compile install_module
 
 compile:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules

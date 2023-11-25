@@ -33,59 +33,61 @@ int char_device_create_bmp280(void)
 {
     int ret_val = -1;
 
-    printk(KERN_INFO "Inicializando el char device\n");
+    printk(KERN_INFO "char_device_create_bmp280: Creando el char device\n");
 
     if ((device_name = kmalloc(strlen(DEVICE_NAME) + 1, GFP_KERNEL)) == NULL) 
     {
-        printk(KERN_ERR "Fallo kmalloc\n");
+        printk(KERN_ERR "char_device_create_bmp280: Error al reservar memoria para el nombre del device\n");
         return -ENOMEM;
     }
     strcpy(device_name, DEVICE_NAME);
 
-    printk(KERN_INFO "Device name: %s\n", device_name);
+    printk(KERN_INFO "char_device_create_bmp280: device_name = %s\n", device_name);
 
     if(alloc_chrdev_region(&device_number, MINOR_NUMBER, NUMBER_OF_DEVICES, device_name) != 0)
     {
-        printk(KERN_ERR "Error al reservar el device number\n");
+        printk(KERN_ERR "char_device_create_bmp280: Error al reservar el device number\n");
         return -EBUSY;
     }
 
-    printk(KERN_INFO "Device number reservado correctamente\n");
+    printk(KERN_INFO "char_device_create_bmp280: device_number = %d\n", device_number);
 
     if((device_class = class_create(THIS_MODULE, DEVICE_CLASS_NAME))==NULL)
     {
-        printk(KERN_ERR "Error al crear la clase del device\n");
+        printk(KERN_ERR "char_device_create_bmp280: Error al crear el device class\n");
         unregister_chrdev_region(device_number, NUMBER_OF_DEVICES);
         return -EBUSY;
     }
 
-    printk(KERN_INFO "Device class creado correctamente\n");
+    printk(KERN_INFO "char_device_create_bmp280: device_class creado correctamente\n");
 
     if(device_create(device_class, NULL, device_number, NULL, device_name)==NULL)
     {
-        printk(KERN_ERR "Error al crear el device\n");
+        printk(KERN_ERR "char_device_create_bmp280: Error al crear el device\n");
         class_destroy(device_class);
         unregister_chrdev_region(device_number, NUMBER_OF_DEVICES);
         return -EBUSY;
     }
 
-    printk(KERN_INFO "Device creado correctamente\n");
+    printk(KERN_INFO "char_device_create_bmp280: device creado correctamente\n");
 
     cdev_init(&char_device, &bmp280_fops);
 
-    printk(KERN_INFO "cdev_init() OK!\n");
+    printk(KERN_INFO "char_device_create_bmp280: cdev_init() OK!\n");
 
     if ((ret_val = cdev_add(&char_device, device_number, NUMBER_OF_DEVICES)) != 0 ) 
     {
-        printk(KERN_ERR "Error al agregar el device\n");
+        printk(KERN_ERR "char_device_create_bmp280: Error al agregar el char device\n");
         class_destroy(device_class);
         unregister_chrdev_region(device_number, NUMBER_OF_DEVICES);
         return -EBUSY;
     }
 
-    printk(KERN_INFO "Device creado correctamente\n"
-                    "Major number: %d\n"
-                    "Minor number: %d\n", MAJOR(device_number), MINOR(device_number));
+    printk(KERN_INFO "char_device_create_bmp280: cdev_add() OK!\n");
+
+    printk(KERN_INFO "char_device_create_bmp280: Char device creado correctamente\n");
+    printk(KERN_INFO "char_device_create_bmp280: Major number = %d\n", MAJOR(device_number));
+    printk(KERN_INFO "char_device_create_bmp280: Minor number = %d\n", MINOR(device_number));   
                     
     return 0;
 
@@ -96,7 +98,7 @@ int char_device_create_bmp280(void)
 /// @return void
 void char_device_remove(void)
 {
-    pr_info("[LOG] Removing char device.\n");
+    printk(KERN_INFO "char_device_remove: Removiendo el char device\n");
 
     cdev_del(&char_device); 
 
@@ -118,58 +120,74 @@ void char_device_remove(void)
 
     printk(KERN_INFO "char_device_remove: kfree() OK!\n");
 
-    pr_info("[LOG] Char device removed.\n");
+    printk(KERN_INFO "char_device_remove: Char device removido correctamente\n");
 }
 
 /* File operations */
 
 static int char_bmp280_open(struct inode *inode, struct file *file)
 {
-    pr_info("[LOG] Abriendo el archivo\n");
+    printk(KERN_INFO "char_bmp280_open: Abriendo el archivo\n");
 
-    if(bmp_is_running()== False)
+    if(bmp280_is_connected() < 0)
     {
-        printk("El driver no está abierto\n");
+        printk(KERN_ERR "char_bmp280_open: El sensor no está conectado\n");
+
         return -1;
     }
 
+    printk(KERN_INFO "char_bmp280_open: El sensor está conectado\n");
+    
     return 0;
 }
 
 static int char_bmp280_close(struct inode *inode, struct file *file)
 {
-    pr_info("[LOG] Cerrando el archivo\n");
-
-
+    printk(KERN_INFO "char_bmp280_close: Cerrando el archivo\n");
     return 0;
 }
 
 static int char_bmp280_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
 {
-    bmp280_temperature temperature;
+    int temperatura;
+    char string_temperatura[10];
 
-    pr_info("[LOG] Leyendo el archivo\n");
-
-    if(bmp280_get_temperature(&temperature) < 0)
+    if(bmp280_is_connected() < 0)
     {
-        pr_err("[LOG] Error al obtener la temperatura\n");
+        printk(KERN_ERR "char_bmp280_read: El sensor no está conectado\n");
 
         return -1;
     }
 
-    if(copy_to_user(buf, &temperature, sizeof(bmp280_temperature)) != 0)
+    if((bmp280_get_temperature(&temperatura)) < 0)
     {
-        pr_err("[LOG] Error al copiar la temperatura al usuario\n");
+        printk(KERN_ERR "char_bmp280_read: Error al obtener la temperatura\n");
 
         return -1;
     }
+
+    printk(KERN_INFO "char_bmp280_read: Leyendo el archivo\n");
+
+    sprintf(string_temperatura, "%i", temperatura);
+
+    if(copy_to_user(buf, string_temperatura, sizeof(string_temperatura)) != 0)
+    {
+        printk(KERN_ERR "char_bmp280_read: Error al copiar la temperatura al usuario\n");
+
+        return -1;
+    }
+
+    printk(KERN_INFO "char_bmp280_read: Temperatura = %s\n", string_temperatura);
+    printk(KERN_INFO "char_bmp280_read: Temperatura copiada al usuario\n");
 
     return 0;
 }
 
 static int char_bmp280_write(struct file *file, const char __user *buf, size_t len, loff_t *offset)
 {
-    pr_info("[LOG] Escribiendo el archivo\n");
+    printk(KERN_INFO "char_bmp280_write: Escribiendo en el archivo\n");
+
+    printk(KERN_INFO "char_bmp280_write: Operación no realizable\n");
 
     return 0;
 }
