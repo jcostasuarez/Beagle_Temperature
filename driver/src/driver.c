@@ -90,20 +90,12 @@ static int driver_bmp280_probe( struct platform_device *pdev )
         char_device_remove();
         return -1;
     }
-
+    
     printk(KERN_INFO "driver_bmp280_probe: i2c_sitara_init() OK!\n");
 
     msleep(100);
-    
-    if(bmp280_is_connected() < 0)
-    {
-        printk(KERN_ERR "driver_bmp280_probe: Error al verificar la conexión del bmp280\n");
-        char_device_remove();
-        i2c_sitara_exit();
-        bmp280_deinit();
-        return -1;
-    }
-    
+
+
     if((retval = bmp280_init()) < 0)
     {
         printk(KERN_ERR "driver_bmp280_probe: Error al inicializar el bmp280\n");

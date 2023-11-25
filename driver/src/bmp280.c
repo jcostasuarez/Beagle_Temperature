@@ -33,11 +33,15 @@ int bmp280_init(void)
     uint8_t aux1 = 0;
     uint8_t aux2 = 0;
 
+    printk(KERN_INFO "bmp280_init: Inicializando el BMP280\n");
+
     if(bmp280_is_connected() < 0)
     {
         printk(KERN_ERR "bmp280_init: El chip no está conectado\n");
         return -1;
     }
+
+    printk(KERN_INFO "bmp280_init: El chip está conectado\n");
 
 
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_MSB, NOMASK, &aux1);
@@ -45,16 +49,22 @@ int bmp280_init(void)
 
     dig_T1 = (aux1 << 8) | aux2;
 
+    printk(KERN_INFO "bmp280_init: dig_T1 = %d\n", dig_T1);
+
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_MSB, NOMASK, &aux1);
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_LSB, NOMASK, &aux2);
 
     dig_T2 = (aux1 << 8) | aux2;
+
+    printk(KERN_INFO "bmp280_init: dig_T2 = %d\n", dig_T2);
 
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_MSB, NOMASK, &aux1);
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_LSB, NOMASK, &aux2);
 
     dig_T3 = (aux1 << 8) | aux2;
 
+    printk(KERN_INFO "bmp280_init: dig_T3 = %d\n", dig_T3);
+    
     bmp280_set_frequency(FREQ_1);
     bmp280_set_mode(BMP280_NORMAL_MODE);
 
