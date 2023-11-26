@@ -70,7 +70,6 @@ module_exit(driver_bmp280_exit);
 
 static int driver_bmp280_probe( struct platform_device *pdev )
 {
-
     int retval = -1;
 
     printk(KERN_INFO "\n\n\n\n\n    driver_bmp280_probe: Probe del driver    \n\n\n\n\n");
@@ -82,37 +81,35 @@ static int driver_bmp280_probe( struct platform_device *pdev )
         return -1;
     }
 
+    /*Configuro los pines del I2C2*/
+    
+    if((retval = i2c_sitara_config_pinmux()) != 0)
+    {
+        printk( KERN_ERR "Error al configurar los pines del I2C2\n");
+        return retval;
+    }
+
+    printk(KERN_INFO "i2_sitara_init: i2c_sitara_config_pinmux() OK!\n" );
+
+    msleep(15);
+
+    if((retval = i2c_sitara_turn_on_peripheral()) != 0)
+    {
+        printk( KERN_ERR "Error al configurar el periferico del I2C2\n");
+        return retval;
+    }
+    
+    /*Configuro las interrupciones del I2C2*/
+
+    if((retval = i2c_sitara_config_interrupts(pdev)) != 0)
+    {
+        printk( KERN_ERR "Error al configurar las interrupciones del I2C2\n");
+        return retval;
+    }
+
+    printk(KERN_INFO "i2_sitara_init: i2c_sitara_config_interrupts() OK!\n" );
+
     printk(KERN_INFO "driver_bmp280_probe: char_device_create_bmp280() OK!\n");
-
-    if((retval = i2c_sitara_init(pdev)) < 0)
-    {
-        printk(KERN_ERR "driver_bmp280_probe: Error al inicializar el i2c\n");
-        char_device_remove();
-        return -1;
-    }
-
-    printk(KERN_INFO "driver_bmp280_probe: i2c_sitara_init() OK!\n");
-
-    msleep(100);
-    
-    if(bmp280_is_connected() < 0)
-    {
-        printk(KERN_ERR "driver_bmp280_probe: Error al verificar la conexión del bmp280\n");
-        char_device_remove();
-        i2c_sitara_exit();
-        bmp280_deinit();
-        return -1;
-    }
-    
-    if((retval = bmp280_init()) < 0)
-    {
-        printk(KERN_ERR "driver_bmp280_probe: Error al inicializar el bmp280\n");
-        char_device_remove();
-        i2c_sitara_exit();
-        return -1;
-    }
-
-    printk(KERN_INFO "driver_bmp280_probe: bmp280_init() OK!\n");
 
     printk(KERN_INFO "\n\n\n\n\n    driver_bmp280_probe: Probe del driver finalizado      \n\n\n\n\n");
 
@@ -123,14 +120,9 @@ static int driver_bmp280_remove( struct platform_device *pdev )
 {
     printk(KERN_INFO "driver_bmp280_remove: Removiendo el driver bmp280\n");
 
-    char_device_remove();
+    i2c_sitara_free_interrupts();
 
-    if(bmp280_is_connected() > 0)
-    {
-        bmp280_deinit();
-    }
-
-    i2c_sitara_exit();
+    char_device_remove();    
     
     printk(KERN_INFO "driver_bmp280_remove: Driver removido correctamente\n");
 

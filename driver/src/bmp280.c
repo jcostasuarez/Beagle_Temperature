@@ -19,8 +19,8 @@
 /* Static variables */
 
 static uint32_t dig_T1;
-static int32_t dig_T2;
-static int32_t dig_T3;
+static uint32_t dig_T2;
+static uint32_t dig_T3;
 
 static volatile int bmp_working = False;
 
@@ -30,8 +30,10 @@ static volatile int bmp_working = False;
 
 int bmp280_init(void)
 {
-    uint8_t aux1 = 0;
-    uint8_t aux2 = 0;
+    uint32_t aux1 = 0;
+    uint32_t aux2 = 0;
+
+    printk(KERN_INFO "bmp280_init: Inicializando el BMP280\n");
 
     if(bmp280_is_connected() < 0)
     {
@@ -39,19 +41,18 @@ int bmp280_init(void)
         return -1;
     }
 
-
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_MSB, NOMASK, &aux1);
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_LSB, NOMASK, &aux2);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_MSB, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_LSB, &aux2);
 
     dig_T1 = (aux1 << 8) | aux2;
 
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_MSB, NOMASK, &aux1);
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_LSB, NOMASK, &aux2);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_MSB, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_LSB, &aux2);
 
     dig_T2 = (aux1 << 8) | aux2;
 
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_MSB, NOMASK, &aux1);
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_LSB, NOMASK, &aux2);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_MSB, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_LSB, &aux2);
 
     dig_T3 = (aux1 << 8) | aux2;
 
@@ -72,9 +73,11 @@ void bmp280_deinit(void)
 
 int bmp280_is_connected(void)
 {
-    uint8_t data;
+    uint32_t data;
 
-    if(i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_ID,  NOMASK, &data) != BMP280_CHIP_ID)
+    printk(KERN_INFO "bmp280_is_connected: Verificando si el chip está conectado\n");
+
+    if(i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_ID, &data) != BMP280_CHIP_ID)
     {
         printk(KERN_ERR "bmp280_is_connected: El chip no está conectado\n");
         return -1;
@@ -136,11 +139,11 @@ int bmp_set_running(void)
 
 int bmp280_get_temperature(bmp280_temperature *temperature)
 {
-    int32_t data[3];
-    int32_t raw_temp;
-    int32_t var1, var2, t_fine;
-    uint8_t aux1 = 0;
-    uint8_t aux2 = 0;
+    uint32_t data[3];
+    uint32_t raw_temp;
+    uint32_t var1, var2, t_fine;
+    uint32_t aux1 = 0;
+    uint32_t aux2 = 0;
 
     if(temperature == NULL)
     {
@@ -156,18 +159,18 @@ int bmp280_get_temperature(bmp280_temperature *temperature)
         return -1;
     }
 
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_MSB, NOMASK, &aux1);
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_LSB, NOMASK, &aux2);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_MSB, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_LSB, &aux2);
 
     data[0]  = (int32_t)((aux1 << 8) | aux2);
 
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_MSB, NOMASK, &aux1);
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_LSB, NOMASK, &aux2);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_MSB, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_LSB, &aux2);
 
     data[1]  = (int32_t)((aux1 << 8) | aux2);
 
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_MSB, NOMASK, &aux1);
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_LSB, NOMASK, &aux2);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_MSB, &aux1);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_LSB, &aux2);
 
     data[2]  = (int32_t)((aux1 << 8) | aux2);
 

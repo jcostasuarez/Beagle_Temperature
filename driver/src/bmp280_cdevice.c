@@ -1,6 +1,7 @@
 /* File operations */
 #include "bmp280_cdevice.h"
 #include "bmp280.h"
+#include "i2c_sitara.h"
 
 static int char_bmp280_read(struct file *file, char __user *buf, size_t len, loff_t *offset);
 static int char_bmp280_write(struct file *file, const char __user *buf, size_t len, loff_t *offset);
@@ -127,14 +128,25 @@ void char_device_remove(void)
 
 static int char_bmp280_open(struct inode *inode, struct file *file)
 {
+    int retval = -1;
+
     printk(KERN_INFO "char_bmp280_open: Abriendo el archivo\n");
 
-    if(bmp280_is_connected() < 0)
+    if((retval = i2c_sitara_init()) < 0)
     {
-        printk(KERN_ERR "char_bmp280_open: El sensor no está conectado\n");
-
+        printk(KERN_ERR "char_bmp280_open: Error al inicializar el i2c_sitara\n");
         return -1;
     }
+
+    printk(KERN_INFO "char_bmp280_open: i2c_sitara_init() OK!\n");
+
+    if((retval = bmp280_init()) < 0)
+    {
+       printk(KERN_ERR "char_bmp280_open: Error al inicializar el bmp280\n");
+        i2c_sitara_exit();
+        return -1;
+    }
+    printk(KERN_INFO "char_bmp280_open: bmp280_init() OK!\n");
 
     printk(KERN_INFO "char_bmp280_open: El sensor está conectado\n");
     
@@ -144,6 +156,16 @@ static int char_bmp280_open(struct inode *inode, struct file *file)
 static int char_bmp280_close(struct inode *inode, struct file *file)
 {
     printk(KERN_INFO "char_bmp280_close: Cerrando el archivo\n");
+
+    if(bmp280_is_connected() > 0)
+    {
+        bmp280_deinit();
+    }
+
+    i2c_sitara_exit();
+
+    printk(KERN_INFO "char_bmp280_close: Archivo cerrado\n");
+
     return 0;
 }
 

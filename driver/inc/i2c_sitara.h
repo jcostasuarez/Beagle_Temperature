@@ -114,6 +114,7 @@
 #define I2C_SITARA_CNT 0x98
 #define I2C_SITARA_DATA 0x9C
 #define I2C_SITARA_CON 0xA4
+#define I2C_SITARA_OA 0xA8
 #define I2C_SITARA_SA 0xAC
 #define I2C_SITARA_PSC 0xB0
 #define I2C_SITARA_SCLL 0xB4
@@ -126,7 +127,7 @@
  * 
  * @return int 
  */
-int i2c_sitara_init(struct platform_device *pdev);
+int i2c_sitara_init(void);
 
 /**
  * @brief Finaliza el módulo I2C, libera los recursos tomados
@@ -144,7 +145,7 @@ int i2c_sitara_exit(void);
  * @param data 
  * @return int 
  */
-int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask, uint8_t *data);
+int i2c_sitara_read(uint32_t slave_address, uint32_t slave_register, uint32_t *data);
 
 /**
  * @brief Escribe un registro de un esclavo I2C
@@ -155,7 +156,7 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
  * @param data 
  * @return int 
  */
-int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t data);
+int i2c_sitara_write(const uint32_t slave_address, const uint32_t slave_register, const uint32_t data);
 
 /*Funciones secundarias*/
 
@@ -167,6 +168,35 @@ int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t dat
  */
 int i2c_sitara_is_connected(uint8_t slave_address);
 
+
+/**
+ * @brief 
+ * 
+ * @return int 
+ */
+int i2c_sitara_turn_on_peripheral(void);
+
+/**
+ * @brief 
+ * 
+ * @return int 
+ */
+int i2c_sitara_config_pinmux(void);
+
+/**
+ * @brief 
+ * 
+ * @param pdev 
+ * @return int 
+ */
+int i2c_sitara_config_interrupts(struct platform_device *pdev);
+
+/**
+ * @brief 
+ * 
+ * @return int 
+ */
+int i2c_sitara_free_interrupts(void);
 
 /*Definición de estructuras*/
 

@@ -10,6 +10,8 @@ obj-m += bmp280_sitara.o
 
 all: clean compile install_module
 
+ri: clean compile remove_module install_module
+
 compile:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 clean:
@@ -25,7 +27,7 @@ remove_module:
 	sudo rmmod bmp280_sitara
 
 read:
-	sudo cat /dev/temp_sensor/bmp280
+	sudo cat /dev/bmp280_sitara
 
 debug_new_window:
 	gnome-terminal -- bash -c ""; exec bash"

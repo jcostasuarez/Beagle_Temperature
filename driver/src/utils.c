@@ -51,3 +51,65 @@ int clear_bit_32(uint32_t *reg, uint32_t mask)
 
     return 0;
 }
+
+/// @brief       Realiza un pooling de un registro hasta que se cumpla una condición
+/// @param reg   Dirección del registro a realizar el pooling
+/// @param mask  Máscara de bits a comparar
+/// @param value Valor a comparar
+/// @param timeout Tiempo máximo en milisegundos de pooling
+/// @return      -EIO if the pooling took too long, or the time it took to pool
+int pool_register(void __iomem *reg, uint32_t mask, uint32_t value, uint32_t timeout)
+{
+    unsigned int counter = 0;
+
+    printk(KERN_INFO "pool_register: Iniciando pooling\n");
+
+    while((ioread32(reg) & mask) != value)
+    {
+        msleep(1); //Duerme el proceso por 1 ms (No bloqueante)
+
+        counter++;
+        if(counter > timeout)
+        {
+            printk(KERN_ERR "pool_register: El pooling tardó demasiado.");
+            return -EIO;
+        }
+    }
+
+    printk(KERN_INFO "pool_register: Pooling exitoso\n");
+
+    printk(KERN_INFO "pool_register: Tiempo de espera: %d\n", counter);
+
+    return 0;
+}
+
+/// @brief       Realiza un pooling de un registro hasta que se cumpla una condición
+/// @param reg   Dirección del registro a realizar el pooling
+/// @param timeout Tiempo máximo en microsegundos
+/// @return      -EIO if the pooling took too long, or the time it took to pool/ 0 if the pooling was successful
+int pool_bool(volatile bool *condition, uint32_t timeout)
+{
+    unsigned int counter = 0;
+
+    timeout *= 10; //Convierte el timeout a microsegundos;
+
+    printk(KERN_INFO "pool_bool: Iniciando pooling\n");
+
+    while(*condition == false)
+    {
+        msleep(1); //Duerme el proceso por 1 ms (No bloqueante)
+
+        counter++;
+        if(counter > timeout)
+        {
+            printk(KERN_ERR "pool_bool: El pooling tardó demasiado.");
+            return -EIO;
+        }
+    }
+
+    printk(KERN_INFO "pool_bool: Pooling exitoso\n");
+
+    printk(KERN_INFO "pool_bool: Tiempo de espera: %d\n", counter);
+
+    return 0;
+}

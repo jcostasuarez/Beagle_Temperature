@@ -129,10 +129,9 @@ typedef enum bmp280_freq
     FREQ_0_25 = 7    // 0.25 Hz
 } bmp280_freq_t;
 
-typedef int32_t bmp280_temperature;
+typedef uint32_t bmp280_temperature;
 typedef uint32_t bmp280_pressure;
 typedef uint32_t bmp280_humidity;
-typedef uint8_t bmp280_u8t;
 
 /*Prototipos de funciones*/
 
