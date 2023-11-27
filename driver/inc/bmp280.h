@@ -52,6 +52,7 @@
 #define BMP280_ADRESS_T3_COMP_MSB 0X8D
 
 #define BMP280_CHIP_ID 0x58
+#define BMP280_RESET_VALUE 0xB6
 
 #define NOMASK 0xFF
 
@@ -117,18 +118,6 @@ typedef enum bmp280_sensor_mode
     BMP280_ULTRAHIGHRESOLUTION_MODE = 0x04
 } bmp280_sensor_mode_t;
 
-typedef enum bmp280_freq
-{
-    FREQ_167 = 0,    // 166.67 Hz
-    FREQ_15 = 1,     // 14.71 Hz
-    FREQ_8 = 2,      // 7.66 Hz
-    FREQ_4 = 3,      // 3.91 Hz
-    FREQ_2 = 4,      // 1.98 Hz
-    FREQ_1 = 5,      // 0.99 Hz
-    FREQ_0_50 = 6,   // 0.5 Hz
-    FREQ_0_25 = 7    // 0.25 Hz
-} bmp280_freq_t;
-
 typedef uint32_t bmp280_temperature;
 typedef uint32_t bmp280_pressure;
 typedef uint32_t bmp280_humidity;
@@ -141,56 +130,50 @@ typedef uint32_t bmp280_humidity;
  * @param temperature 
  * @return int 
  */
-int bmp280_get_temperature(bmp280_temperature *temperature);
+int bmp280_get_temperature(int *temperature);
 
 /**
- * @brief 
- * 
+ * @brief Función para inicializar el BMP280
+ *          - Realiza un soft reset
+ *          - 
  * @return int 
  */
 int bmp280_init(void);
 
 /**
- * @brief 
- * 
+ * @brief Función para poner al BMP280 en modo sleep
  */
 void bmp280_deinit(void);
 
 /**
- * @brief 
- * 
- * @return int 
+ * @brief Funcion para corroborar que el BMP280 esté conectado
+ * @return int 1 si hubo un error, 0 si no
  */
 int bmp280_is_connected(void);
 
 /**
- * @brief 
+ * @brief Configura el registro ctrl_meas del BMP280
  * 
- * @return int 
+ * @param mode Modo de funcionamiento
+ * @param orst_t Oversampling de temperatura. 
+ * @param orst_p Oversampling de presión
+ * @return int 1 si hubo un error, 0 si no
  */
-int bmp_is_running(void);
+int bmp280_ctrl_meas(bmp280_mode_t mode, bmp280_oversampling_t orst_t, bmp280_oversampling_t orst_p);
 
 /**
- * @brief 
+ * @brief Configura el registro config del BMP280
  * 
- * @return int 
+ * @param t_sb Tiempo de espera entre mediciones
+ * @param filter Coeficiente de filtrado IRR
+ * @return int 1 si hubo un error, 0 si no
  */
-int bmp_set_running(void);
+int bmp280_config( bmp280_standby_duration_t t_sb, bmp280_filter_coefficient_t filter);
 
 /**
- * @brief 
- * 
- * @param frequency 
- * @return int 
+ * @brief Realiza un soft reset del BMP280
+ * @return int 1 si hubo un error, 0 si no
  */
-int bmp280_set_frequency(bmp280_freq_t frequency);
-
-/**
- * @brief 
- * 
- * @param mode 
- * @return int 
- */
-int bmp280_set_mode(bmp280_mode_t mode);
+int bmp280_soft_reset(void);
 
 #endif // __GY_BMP280_H

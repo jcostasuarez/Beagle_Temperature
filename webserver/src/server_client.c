@@ -115,7 +115,7 @@ int ProcesarCliente(int s_aux, struct sockaddr_in *pDireccionCliente, int puerto
     
     sprintf(bufferComunic,
     "HTTP/1.1 200 OK\n"
-    "Content-Length: %ld\n"
+    "Content-Length: %d\n"
     "Content-Type: text/html; charset=utf-8\n"
     "Connection: Closed\n\n%s",
     strlen(HTML), HTML);
@@ -131,7 +131,7 @@ int ProcesarCliente(int s_aux, struct sockaddr_in *pDireccionCliente, int puerto
 
     sprintf(bufferComunic,
     "HTTP/1.1 200 OK\n"
-    "Content-Length: %ld\n"
+    "Content-Length: %d\n"
     "Content-Type: text/css; charset=utf-8\n"
     "Connection: Closed\n\n%s",
     strlen(HTML), HTML);
@@ -153,7 +153,7 @@ int ProcesarCliente(int s_aux, struct sockaddr_in *pDireccionCliente, int puerto
 
     sprintf(bufferComunic, 
     "HTTP/1.1 200 OK\n"
-    "Content-Length: %ld\n"
+    "Content-Length: %d\n"
     "Content-Type: application/json; charset=utf-8\n"
     "Connection: Closed\n\n%s",
     strlen(json), json);

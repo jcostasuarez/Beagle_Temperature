@@ -62,8 +62,6 @@ int pool_register(void __iomem *reg, uint32_t mask, uint32_t value, uint32_t tim
 {
     unsigned int counter = 0;
 
-    printk(KERN_INFO "pool_register: Iniciando pooling\n");
-
     while((ioread32(reg) & mask) != value)
     {
         msleep(1); //Duerme el proceso por 1 ms (No bloqueante)
@@ -76,10 +74,6 @@ int pool_register(void __iomem *reg, uint32_t mask, uint32_t value, uint32_t tim
         }
     }
 
-    printk(KERN_INFO "pool_register: Pooling exitoso\n");
-
-    printk(KERN_INFO "pool_register: Tiempo de espera: %d\n", counter);
-
     return 0;
 }
 
@@ -90,10 +84,6 @@ int pool_register(void __iomem *reg, uint32_t mask, uint32_t value, uint32_t tim
 int pool_bool(volatile bool *condition, uint32_t timeout)
 {
     unsigned int counter = 0;
-
-    timeout *= 10; //Convierte el timeout a microsegundos;
-
-    printk(KERN_INFO "pool_bool: Iniciando pooling\n");
 
     while(*condition == false)
     {
@@ -106,10 +96,6 @@ int pool_bool(volatile bool *condition, uint32_t timeout)
             return -EIO;
         }
     }
-
-    printk(KERN_INFO "pool_bool: Pooling exitoso\n");
-
-    printk(KERN_INFO "pool_bool: Tiempo de espera: %d\n", counter);
 
     return 0;
 }

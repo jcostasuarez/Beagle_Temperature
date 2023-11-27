@@ -16,13 +16,12 @@
 #include "bmp280_cdevice.h"
 #include "utils.h"
 
+#define READ_DELAY 5
 /* Static variables */
 
-static uint32_t dig_T1;
-static uint32_t dig_T2;
-static uint32_t dig_T3;
-
-static volatile int bmp_working = False;
+static unsigned short dig_T1=0;
+static short dig_T2=0;
+static short dig_T3=0;
 
 /*Funciónes del módulo*/
 
@@ -30,34 +29,53 @@ static volatile int bmp_working = False;
 
 int bmp280_init(void)
 {
-    uint32_t aux1 = 0;
-    uint32_t aux2 = 0;
+    uint8_t aux1 = 0;
+    uint8_t aux2 = 0;
 
     printk(KERN_INFO "bmp280_init: Inicializando el BMP280\n");
 
-    if(bmp280_is_connected() < 0)
+    if(bmp280_is_connected()!= 0)
     {
-        printk(KERN_ERR "bmp280_init: El chip no está conectado\n");
+        printk(KERN_ERR "bmp280_init: El BMP280 no esta conectado\n");
         return -1;
     }
 
+    if(bmp280_soft_reset() != 0)
+    {
+        printk(KERN_ERR "bmp280_init: Error al resetear el BMP280\n");
+        return -1;
+    }
+    
+    msleep(READ_DELAY);
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_MSB, &aux1);
+
+    msleep(READ_DELAY);
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_LSB, &aux2);
 
-    dig_T1 = (aux1 << 8) | aux2;
+    dig_T1 = ((unsigned short)aux1 << 8) | (unsigned short)aux2;
 
+    msleep(READ_DELAY);
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_MSB, &aux1);
+
+    msleep(READ_DELAY);
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_LSB, &aux2);
 
-    dig_T2 = (aux1 << 8) | aux2;
+    dig_T2 = ((short)aux1 << 8) | (unsigned short)aux2;
 
+    msleep(READ_DELAY);
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_MSB, &aux1);
+
+    msleep(READ_DELAY);
     i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_LSB, &aux2);
 
-    dig_T3 = (aux1 << 8) | aux2;
+    dig_T3 = ((short)aux1 << 8) | (unsigned short)aux2;
 
-    bmp280_set_frequency(FREQ_1);
-    bmp280_set_mode(BMP280_NORMAL_MODE);
+    bmp280_ctrl_meas(BMP280_NORMAL_MODE, BMP280_OVERSAMPLING_1X, BMP280_OVERSAMPLING_4X);
+    bmp280_config(BMP280_STANDBY_TIME_1_MS, BMP280_FILTER_COEFF_16);
+
+    printk(KERN_INFO "bmp280_init: dig_T1 = %u\n", dig_T1);
+    printk(KERN_INFO "bmp280_init: dig_T2 = %i\n", dig_T2);
+    printk(KERN_INFO "bmp280_init: dig_T3 = %i\n", dig_T3);
 
     printk(KERN_INFO "bmp280_init: BMP280 configurado correctamente\n");
     return 0;
@@ -66,41 +84,48 @@ int bmp280_init(void)
 
 void bmp280_deinit(void)
 {
-    bmp280_set_mode(BMP280_SLEEP_MODE);
+    bmp280_ctrl_meas(BMP280_SLEEP_MODE, BMP280_OVERSAMPLING_1X, BMP280_OVERSAMPLING_1X);
+    
+    dig_T1 = 0;
+    dig_T2 = 0;
+    dig_T3 = 0;
 
     printk(KERN_INFO "bmp280_deinit: BMP280 desconfigurado correctamente\n");
 }
 
 int bmp280_is_connected(void)
 {
-    uint32_t data;
+    uint8_t data;
 
-    printk(KERN_INFO "bmp280_is_connected: Verificando si el chip está conectado\n");
+    printk(KERN_INFO "bmp280_is_connected: Verificando si el chip estA conectado\n");
 
-    if(i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_ID, &data) != BMP280_CHIP_ID)
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_ID, &data);
+
+    if(data != BMP280_CHIP_ID)
     {
-        printk(KERN_ERR "bmp280_is_connected: El chip no está conectado\n");
+        printk(KERN_ERR "bmp280_is_connected: El chip no estA conectado\n");
         return -1;
     }
 
-    printk(KERN_INFO "bmp280_is_connected: El chip está conectado\n");
+    printk(KERN_INFO "bmp280_is_connected: El chip estA conectado\n");
     return 0;
 }
 
-int bmp280_set_frequency(bmp280_freq_t frequency)
+/**
+ * @brief Configura el registro ctrl_meas del BMP280
+ * 
+ * @param mode Modo de funcionamiento
+ * @param orst_t Oversampling de temperatura. 
+ * @param orst_p Oversampling de presión
+ * @return int 1 si hubo un error, 0 si no
+ */
+int bmp280_ctrl_meas(bmp280_mode_t mode, bmp280_oversampling_t orst_t, bmp280_oversampling_t orst_p)
 {
-    if(i2c_sitara_write(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_CONFIG, (uint8_t)frequency) < 0)
-    {
-        printk(KERN_ERR "bmp280_set_frequency: No se pudo escribir en el registro\n");
-        return -1;
-    }
+    uint8_t aux = 0;
 
-    return 0;
-}
+    aux = (uint8_t)mode | (uint8_t)orst_t << 5 | (uint8_t)orst_p << 2;
 
-int bmp280_set_mode(bmp280_mode_t mode)
-{
-    if(i2c_sitara_write(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_CTRL_MEAS, (uint8_t)mode) < 0)
+    if(i2c_sitara_write(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_CTRL_MEAS, aux) !=0)
     {
         printk(KERN_ERR "bmp280_set_mode: No se pudo escribir en el registro\n");
         return -1;
@@ -109,41 +134,36 @@ int bmp280_set_mode(bmp280_mode_t mode)
     return 0;
 }
 
-int bmp_is_running(void )
+/**
+ * @brief Configura el registro config del BMP280
+ * 
+ * @param t_sb Tiempo de espera entre mediciones
+ * @param filter Coeficiente de filtrado IRR
+ * @return int 1 si hubo un error, 0 si no
+ */
+int bmp280_config( bmp280_standby_duration_t t_sb, bmp280_filter_coefficient_t filter)
 {
-    if(bmp_working == False)
+    uint8_t aux = 0;
+
+    aux = (uint8_t)t_sb << 5 | (uint8_t)filter << 2;
+
+    if(i2c_sitara_write(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_CONFIG, aux) !=0)
     {
-        printk(KERN_ERR "bmp_is_running: El bmp280 no está corriendo\n");
+        printk(KERN_ERR "bmp280_set_mode: No se pudo escribir en el registro\n");
         return -1;
     }
-
-    printk(KERN_INFO "bmp_is_running: El bmp280 está corriendo\n");
-
-    return bmp_working;
-}
-
-int bmp_set_running(void)
-{
-    if(bmp_working == True)
-    {
-        printk(KERN_ERR "bmp_set_running: El bmp280 ya está corriendo\n");
-        return -1;
-    }
-
-    printk(KERN_INFO "bmp_set_running: El bmp280 está corriendo\n");
-
-    bmp_working = True;
 
     return 0;
 }
 
-int bmp280_get_temperature(bmp280_temperature *temperature)
+int bmp280_get_temperature(int *temperature)
 {
-    uint32_t data[3];
-    uint32_t raw_temp;
-    uint32_t var1, var2, t_fine;
-    uint32_t aux1 = 0;
-    uint32_t aux2 = 0;
+    int8_t temp_msb;
+    uint8_t temp_lsb;
+    uint8_t temp_xlsb;
+    int32_t raw_temp;
+    int32_t var1, var2;
+    int32_t t_fine;
 
     if(temperature == NULL)
     {
@@ -152,43 +172,46 @@ int bmp280_get_temperature(bmp280_temperature *temperature)
         return -1;
     }
 
-    if(i2c_sitara_is_connected(BMP280_SLAVE_ADDRESS) < 0)
-    {
-        printk(KERN_ERR "bmp280_get_temperature: El chip no está conectado\n");
+    // Read temp_msb, temp_lsb and temp_xlsb
+    msleep(READ_DELAY);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_TEMP_MSB, &temp_msb);
+    msleep(READ_DELAY);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_TEMP_LSB, &temp_lsb);
+    msleep(READ_DELAY);
+    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_TEMP_XLSB, &temp_xlsb);
 
-        return -1;
-    }
+    // Convert the data to 20-bits
 
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_MSB, &aux1);
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T1_COMP_LSB, &aux2);
+    raw_temp = (((uint32_t)temp_msb << 12) | ((uint32_t)temp_lsb << 4) | ((uint32_t)temp_xlsb >> 4));
 
-    data[0]  = (int32_t)((aux1 << 8) | aux2);
 
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_MSB, &aux1);
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T2_COMP_LSB, &aux2);
-
-    data[1]  = (int32_t)((aux1 << 8) | aux2);
-
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_MSB, &aux1);
-    i2c_sitara_read(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_T3_COMP_LSB, &aux2);
-
-    data[2]  = (int32_t)((aux1 << 8) | aux2);
-
-    if(data[0] < 0 || data[1] < 0 || data[2] < 0)
-    {
-        printk(KERN_ERR "bmp280_get_temperature: Error al leer los registros\n");
-
-        return -1;
-    }
-
-    raw_temp = (data[0] << 16) | (data[1] << 8) | (data[2] >> 4);
+    var1 = ((((raw_temp >> 3) - ((int32_t)dig_T1 << 1))) * ((int32_t)dig_T2)) >> 11;
+    var2 = (((((raw_temp >> 4) - ((int32_t)dig_T1)) * ((raw_temp >> 4) - ((int32_t)dig_T1))) >> 12) * ((int32_t)dig_T3)) >> 14;
     
-    var1 = ((((raw_temp >> 3) - (dig_T1 << 1))) * (dig_T2)) >> 11;
-    var2 = (((((raw_temp >> 4) - (dig_T1)) * ((raw_temp >> 4) - (dig_T1))) >> 12) * (dig_T3)) >> 14;
-
     t_fine = var1 + var2;
 
-    *temperature = (t_fine * 5 + 128) >> 8;
+    *temperature = ((t_fine * 5 + 128) >> 8);
+
+    //print all the values
+    printk(KERN_INFO "bmp280_get_temperature: raw_temp = %d\n", raw_temp);
+    printk(KERN_INFO "bmp280_get_temperature: var1 = %d\n", var1);
+    printk(KERN_INFO "bmp280_get_temperature: var2 = %d\n", var2);
+    printk(KERN_INFO "bmp280_get_temperature: t_fine = %d\n", t_fine);
+    printk(KERN_INFO "bmp280_get_temperature: temperature = %d\n", *temperature);
+    printk(KERN_INFO "bmp280_get_temperature: temp_msb = %d\n", temp_msb);
+    printk(KERN_INFO "bmp280_get_temperature: temp_lsb = %d\n", temp_lsb);
+    printk(KERN_INFO "bmp280_get_temperature: temp_xlsb = %d\n", temp_xlsb);
+
+    return 0;
+}
+
+int bmp280_soft_reset(void)
+{
+    if(i2c_sitara_write(BMP280_SLAVE_ADDRESS, BMP280_ADRESS_RESET, BMP280_RESET_VALUE) != 0)
+    {
+        printk(KERN_ERR "bmp280_soft_reset: No se pudo escribir en el registro\n");
+        return -1;
+    }
 
     return 0;
 }

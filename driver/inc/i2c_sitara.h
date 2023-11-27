@@ -24,23 +24,10 @@
 #include <linux/io.h> /*IO handling*/
 #include <linux/platform_device.h> /*Platform devices handling*/
 #include <linux/init.h> /*Init handling*/
+#include <linux/types.h> /*Types handling*/
+#include <linux/wait.h> /*Wait handling*/
 
 #include "types.h"
-
-/*
-    Device tree overlay:
-    compatible = "ti,sysc-omap2\0ti,sysc";
-    reg = <0x9c000 0x08 0x9c010 0x08 0x9c090 0x08>;
-    reg-names = "rev\0sysc\0syss";
-    ti,sysc-mask = <0x307>;
-    ti,sysc-sidle = <0x00 0x01 0x02 0x03>;
-    ti,syss-mask = <0x01>;
-    clocks = <0x2f 0x0c 0x00>;
-    clock-names = "fck";
-    #address-cells = <0x01>;
-    #size-cells = <0x01>;
-    ranges = <0x00 0x9c000 0x1000>;
-*/
 
 /* Definición de registros */
 
@@ -145,7 +132,7 @@ int i2c_sitara_exit(void);
  * @param data 
  * @return int 
  */
-int i2c_sitara_read(uint32_t slave_address, uint32_t slave_register, uint32_t *data);
+int i2c_sitara_read(const uint8_t slave_address, const uint8_t slave_register, uint8_t *data);
 
 /**
  * @brief Escribe un registro de un esclavo I2C
@@ -156,7 +143,7 @@ int i2c_sitara_read(uint32_t slave_address, uint32_t slave_register, uint32_t *d
  * @param data 
  * @return int 
  */
-int i2c_sitara_write(const uint32_t slave_address, const uint32_t slave_register, const uint32_t data);
+int i2c_sitara_write(const uint8_t slave_address, const uint8_t slave_register, const uint8_t data);
 
 /*Funciones secundarias*/
 

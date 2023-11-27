@@ -12,7 +12,7 @@
 #include "../inc/server.h"
 #include "../inc/buffer.h"
 #include "../inc/server_client.h"
-
+#include "../inc/server_temp.h"
 
 #define FILENAME_DIR_MAX 256
 char cCurrentPath[FILENAME_DIR_MAX];
@@ -102,18 +102,20 @@ int main(int argc, char *argv[])
     // Demon: Permite que el proceso hijo se ejecute en segundo plano
     // y que el proceso padre pueda terminar sin que el hijo termine.
 
-    float random_float = 0.0;
+    float new_temp = 0.0;
     while (1)
     {
       // Carga el buffer
-      random_float = ((float)rand() / (float)(RAND_MAX)) * 2.0 - 1.0;
-      if (buffer_put(buffer, 24+random_float) < 0)
+      new_temp = get_temp();
+
+      if (buffer_put(buffer, new_temp) < 0)
       {
         fprintf(stderr, "Error en buffer_put.\n");
         buffer_destroy(&buffer, shmid); // Destruimos el buffer
         close(socket_id);      // Cerramos el socket
         exit(1);
       }
+
       sleep(BUFFER_TIME_SLEEP);
     } // End of while loop
   } // End of child process
