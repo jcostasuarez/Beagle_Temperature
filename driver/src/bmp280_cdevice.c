@@ -1,6 +1,7 @@
 /* File operations */
 #include "bmp280_cdevice.h"
 #include "bmp280.h"
+#include "i2c_sitara.h"
 
 static int char_bmp280_read(struct file *file, char __user *buf, size_t len, loff_t *offset);
 static int char_bmp280_write(struct file *file, const char __user *buf, size_t len, loff_t *offset);
@@ -127,60 +128,66 @@ void char_device_remove(void)
 
 static int char_bmp280_open(struct inode *inode, struct file *file)
 {
+    int retval = -1;
+
     printk(KERN_INFO "char_bmp280_open: Abriendo el archivo\n");
 
-    if(bmp280_is_connected() < 0)
+    if((retval = bmp280_init()) < 0)
     {
-        printk(KERN_ERR "char_bmp280_open: El sensor no está conectado\n");
-
+        printk(KERN_ERR "char_bmp280_open: Error al inicializar el bmp280\n");
         return -1;
     }
+    printk(KERN_INFO "char_bmp280_open: bmp280_init() OK!\n");
 
-    printk(KERN_INFO "char_bmp280_open: El sensor está conectado\n");
-    
     return 0;
 }
 
 static int char_bmp280_close(struct inode *inode, struct file *file)
 {
     printk(KERN_INFO "char_bmp280_close: Cerrando el archivo\n");
+
+    bmp280_deinit();
+
+    printk(KERN_INFO "char_bmp280_close: Archivo cerrado\n");
+
     return 0;
 }
 
 static int char_bmp280_read(struct file *file, char __user *buf, size_t len, loff_t *offset)
 {
+
     int temperatura;
     char string_temperatura[10];
+    int string_temperatura_len = 0;
 
-    if(bmp280_is_connected() < 0)
-    {
-        printk(KERN_ERR "char_bmp280_read: El sensor no está conectado\n");
+    printk(KERN_INFO "char_bmp280_read: Leyendo el archivo\n");
 
-        return -1;
-    }
-
-    if((bmp280_get_temperature(&temperatura)) < 0)
+    if((bmp280_get_temperature(&temperatura)) != 0)
     {
         printk(KERN_ERR "char_bmp280_read: Error al obtener la temperatura\n");
 
         return -1;
     }
 
-    printk(KERN_INFO "char_bmp280_read: Leyendo el archivo\n");
+    sprintf(string_temperatura, "%i\n", temperatura);
 
-    sprintf(string_temperatura, "%i", temperatura);
+    string_temperatura_len = strlen(string_temperatura);
 
-    if(copy_to_user(buf, string_temperatura, sizeof(string_temperatura)) != 0)
+    if(copy_to_user(buf, string_temperatura, string_temperatura_len) != 0)
     {
         printk(KERN_ERR "char_bmp280_read: Error al copiar la temperatura al usuario\n");
 
         return -1;
     }
 
+    // Change the offset
+
+    *offset += string_temperatura_len;
+
     printk(KERN_INFO "char_bmp280_read: Temperatura = %s\n", string_temperatura);
     printk(KERN_INFO "char_bmp280_read: Temperatura copiada al usuario\n");
 
-    return 0;
+    return string_temperatura_len;
 }
 
 static int char_bmp280_write(struct file *file, const char __user *buf, size_t len, loff_t *offset)
@@ -191,4 +198,3 @@ static int char_bmp280_write(struct file *file, const char __user *buf, size_t l
 
     return 0;
 }
-/* Device tree functions */

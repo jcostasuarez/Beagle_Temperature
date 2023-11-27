@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "bmp280_cdevice.h": "c",
+        "bmp280.h": "c",
+        "i2c_sitara.h": "c",
+        "utils.h": "c",
+        "kernel.h": "c",
+        "types.h": "c",
+        "stdlib.h": "c"
+    }
+}

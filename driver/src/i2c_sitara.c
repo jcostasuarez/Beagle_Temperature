@@ -10,11 +10,13 @@
  */
 
 /*Funciones principales*/
-#include "i2c_sitara.h"
+#include "bmp280.h"
 #include "bmp280_cdevice.h"
+#include "i2c_sitara.h"
 #include "utils.h"
 
 /* Funciones secundarias, privadas */
+<<<<<<< HEAD
 static int i2c_sitara_start(void);
 static int i2c_sitara_reset(void);
 
@@ -31,6 +33,8 @@ static int i2c_sitara_set_count(unsigned int dcount);
 static int i2c_sitara_print_status(void);
 
 static int pool_register(void *reg, uint32_t mask, uint32_t value, uint32_t timeout);
+=======
+>>>>>>> tmp
 
 static irqreturn_t  i2c_sitara_irq_handler (int , void *);
 
@@ -39,15 +43,32 @@ static irqreturn_t  i2c_sitara_irq_handler (int , void *);
 /// @brief Variable que tiene mapeado los registros de i2c2
 static void __iomem *i2c2_registers = NULL;
 
+
+#define MAX_TIMEOUT 1000
+
+#define MAX_SIZE_BUFFER 2
+
 /*volatil*/
 
-static volatile bool data_rdy = false;
 static volatile int irq_number = 0;
 
+<<<<<<< HEAD
 static volatile int global_data[2] = {0,0};
 
 static volatile int recieve_ready = 0;
 static volatile int transmit_ready = 0;
+=======
+uint32_t * trx;
+volatile int trx_count = 0;
+
+uint32_t * rx;
+volatile int rx_count = 0;
+
+DEFINE_MUTEX(lock_bus);
+DECLARE_COMPLETION(ardy);
+DECLARE_COMPLETION(rrdy);
+DECLARE_COMPLETION(xrdy);
+>>>>>>> tmp
 
 /******** Funciones públicas ********/
 
@@ -56,13 +77,14 @@ static volatile int transmit_ready = 0;
  * 
  * @return int 
  */
-int i2c_sitara_init(struct platform_device *pdev)
+int i2c_sitara_init(void)
 {
-    int ret_val = 0;
+    unsigned int aux = 0;
 
     /*Configuro los registros del i2c*/
     i2c2_registers = ioremap(I2C_SITARA_I2C2_BASE, I2C_SITARA_I2C2_SIZE);
 
+    /*Verifico que se haya podido mapear la memoria*/
     if(i2c2_registers == NULL)
     {
         printk(KERN_ERR "Error al mapear la memoria de i2c2_registers\n");
@@ -72,6 +94,7 @@ int i2c_sitara_init(struct platform_device *pdev)
     
     printk(KERN_INFO "i2_sitara_init: i2c2_registers = %p\n", i2c2_registers);
 
+<<<<<<< HEAD
     /*Configuro los pines del I2C2*/
     
     if((ret_val = i2c_sitara_config_pinmux()) != 0)
@@ -104,39 +127,70 @@ int i2c_sitara_init(struct platform_device *pdev)
 
 
 
+=======
+>>>>>>> tmp
     /*Configuro el clock del I2C2*/
 
-    if((ret_val = i2c_sitara_config_clock()))
-    {
-        printk( KERN_ERR "Error al configurar el clock del I2C2\n");
-        iounmap(i2c2_registers);
-        return ret_val;
-    }
+    /* Apago el módulo*/
 
-    printk(KERN_INFO "i2_sitara_init: i2c_sitara_config_clock() OK!\n" );
+    iowrite32(0x0, i2c2_registers+I2C_SITARA_CON);
 
-    /*Configuro las interrupciones del I2C2*/
+    /*Configurando prescaler*/
+    //0x01;53;55
 
-    if((ret_val = i2c_sitara_config_interrupts(pdev)) != 0)
-    {
-        printk( KERN_ERR "Error al configurar las interrupciones del I2C2\n");
-        iounmap(i2c2_registers);
-        return ret_val;
-    }
-    printk(KERN_INFO "i2_sitara_init: i2c_sitara_config_interrupts() OK!\n" );
+    /*I2C_PSC = x para obtener 12MHz*/
+    iowrite32(0x01, i2c2_registers+I2C_SITARA_PSC);
 
-    /*Configuro los registros del I2C2 y habilito el bus*/
-    ret_val = i2c_sitara_config_regs();
+    /*Programar para obtener entre 100Kbps o 400Kbps con SCLL Y SCLH*/
+    aux = 53;
+    printk(KERN_INFO "i2c_sitara_config_clock: scll = %d\n", aux);
 
-    if(ret_val != 0)
-    {
-        printk( KERN_ERR "Error al configurar los registros del I2C2\n");
-        iounmap(i2c2_registers);
-        return ret_val;
-    }
+    iowrite32(aux, i2c2_registers+I2C_SITARA_SCLL);
+    aux = 55;
+
+    printk(KERN_INFO "i2c_sitara_config_clock: sclh = %d\n", aux);
+
+    iowrite32(aux, i2c2_registers+I2C_SITARA_SCLH);
+
+    /*Configumos direccion propia*/
+
+    iowrite32(0xAA, i2c2_registers+I2C_SITARA_OA);
+
+    /*Habilito interrupciones*/
+    iowrite32(I2C_SITARA_XRDY|I2C_SITARA_RRDY | I2C_SITARA_NACK | I2C_SITARA_ARDY | I2C_SITARA_AL, i2c2_registers+I2C_SITARA_IRQENABLE_SET);
+
+    //iowrite32(0xFFFF, i2c2_registers+I2C_SITARA_IRQENABLE_SET);
+
+    /*Habilito el modulo*/
+
+    iowrite32(I2C_SITARA_CON_EN | I2C_SITARA_CON_MST, i2c2_registers+I2C_SITARA_CON);
 
     printk(KERN_INFO "i2_sitara_init: i2c_sitara_config_regs() OK!\n" );
 
+<<<<<<< HEAD
+=======
+    //Solicito espacio para los vectores de recepción y transmisioon
+
+    trx = kmalloc(MAX_SIZE_BUFFER*sizeof(uint32_t), GFP_KERNEL);
+    if(trx == NULL)
+    {
+        printk(KERN_ERR "i2_sitara_init: Error al solicitar memoria para el buffer de transmisión\n");
+        iounmap(i2c2_registers);
+        return -ENOMEM;
+    }
+
+    rx = kmalloc(MAX_SIZE_BUFFER*sizeof(uint32_t), GFP_KERNEL);
+    if(rx == NULL)
+    {
+        printk(KERN_ERR "i2_sitara_init: Error al solicitar memoria para el buffer de recepción\n");
+        iounmap(i2c2_registers);
+        kfree(trx);
+        return -ENOMEM;
+    }
+
+    printk(KERN_INFO "i2_sitara_init: i2c_sitara_init() OK!\n" );
+
+>>>>>>> tmp
     return 0;
 }
 
@@ -149,8 +203,6 @@ int i2c_sitara_exit(void)
 {
     int ret_val = 0;
 
-    i2c_sitara_free_interrupts();
-
     if(i2c2_registers!=NULL)
     {
         iounmap(i2c2_registers);
@@ -158,8 +210,15 @@ int i2c_sitara_exit(void)
         return -ENOMEM;
     }
 
-    printk(KERN_INFO "i2c_sitara_exit: i2c2_registers unmapped\n");
+    i2c2_registers = NULL;
+    
+    // Desalojo la memoria de los vectores
+    kfree(trx);
+    kfree(rx);
 
+    trx_count = 0;
+    rx_count = 0;
+    printk(KERN_INFO "i2c_sitara_exit: i2c2_registers unmapped\n");
     return ret_val;
 }
 
@@ -168,18 +227,13 @@ int i2c_sitara_exit(void)
  * @brief Esta función lee un registro de un esclavo i2c, usando el bus i2c2, del Sitara y lo guarda en data antes de pasar por la máscara
  * @param slave_address Dirección del esclavo
  * @param slave_register Dirección del registro a leer
- * @param mask Máscara de bits a aplicar
  * @param data Puntero a la variable donde se guardará el dato
  * @return int 
  */
-int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask, uint8_t *data)
+int i2c_sitara_read(const uint8_t slave_address, const uint8_t slave_register, uint8_t *data)
 {
-    int ret_val = 0;
 
-    printk(KERN_INFO "i2c_sitara_read: Iniciando lectura\n");
-    printk(KERN_INFO "i2c_sitara_read: slave_address = %x\n", slave_address);
-    printk(KERN_INFO "i2c_sitara_read: slave_register = %x\n", slave_register);
-    printk(KERN_INFO "i2c_sitara_read: mask = %x\n", mask);
+    int ret_val = 0;
 
     if(data == NULL)
     {
@@ -192,6 +246,7 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
         printk(KERN_ERR "i2c_sitara_read: Registros no mapeados en memoria, iniciar el bus\n");
         return -ENOMEM;
     }
+<<<<<<< HEAD
 
     // Set slave address
 
@@ -203,6 +258,8 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
 
     iowrite32(global_data[0], i2c2_registers+I2C_SITARA_DATA);
 
+=======
+>>>>>>> tmp
     // pool bus
     ret_val = pool_register(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW, I2C_SITARA_BB, 0, 1000);
     if(ret_val != 0)
@@ -210,24 +267,11 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
         printk(KERN_ERR "i2c_sitara_read: Error al esperar la interrupción de bus libre\n");
         return ret_val;
     }
-
-    printk(KERN_INFO "i2c_sitara_read: Pool: OK!\n" );
-
-    /*Reset FIFOs*/
-    if(i2c_reset_fifos())
-    {
-        printk(KERN_ERR "i2c_sitara_read: Error al resetear los FIFOs\n");
-        return -1;
-    }
-
-    printk(KERN_INFO "i2c_sitara_read: FIFOs reseteados\n" );
     
-    if(i2c_sitara_set_count(1))
-    {
-        printk(KERN_ERR "i2c_sitara_read: Error al configurar el contador\n");
-        return -1;
-    }
+    //Loquear el bus
+    mutex_lock(&lock_bus);
 
+<<<<<<< HEAD
     //Set interrupt mask
     
     iowrite32(I2C_SITARA_RRDY, i2c2_registers+I2C_SITARA_IRQENABLE_SET);
@@ -272,7 +316,62 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
     printk(KERN_INFO "i2c_sitara_read: masked data = %x\n", *data);
 
     printk(KERN_INFO "i2c_sitara_read: Lectura exitosa\n");
+=======
+    //Reset FIFOs
+    iowrite32(I2C_SITARA_BUF_RXFIFO_CLR | I2C_SITARA_BUF_TXFIFO_CLR, i2c2_registers+I2C_SITARA_BUF);
 
+    //Configuro el contador
+    iowrite32(1, i2c2_registers+I2C_SITARA_CNT);
+
+    // Set slave address
+    iowrite32(slave_address, i2c2_registers+I2C_SITARA_SA);
+
+    // Set slave register
+    //iowrite32(slave_register, i2c2_registers+I2C_SITARA_DATA);
+    trx[0] = slave_register;
+    trx_count = 1;
+    rx[0] = 0;
+    rx_count = 1;
+
+    // Set master reciever mode and start
+    iowrite32(I2C_SITARA_CON_MST | I2C_SITARA_CON_EN | I2C_SITARA_CON_TRX | I2C_SITARA_CON_STT |I2C_SITARA_CON_STP , i2c2_registers+I2C_SITARA_CON);
+    
+    //Espero la interrupción de xrdy
+    if(wait_for_completion_interruptible_timeout(&xrdy, msecs_to_jiffies(1000))==0)
+    {
+        printk(KERN_ERR "i2c_sitara_read: Error al esperar la interrupción de bus libre\n");
+        printk(KERN_ERR "i2c_sitara_read: Timeout\n");
+
+        //print raw status
+        printk(KERN_INFO "i2c_sitara_read: raw status = 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW));
+        return -1;
+    }
+
+    //printk(KERN_INFO "i2c_sitara_read: Interrupción de xrdy recibida\n");
+
+    iowrite32(1, i2c2_registers+I2C_SITARA_CNT);
+    iowrite32(I2C_SITARA_CON_MST | I2C_SITARA_CON_EN | I2C_SITARA_CON_STT |I2C_SITARA_CON_STP, i2c2_registers+I2C_SITARA_CON);
+
+    if(wait_for_completion_interruptible_timeout(&rrdy, msecs_to_jiffies(100))==0)
+    {
+        printk(KERN_ERR "i2c_sitara_read: Error al esperar la interrupción de bus libre\n");
+        printk(KERN_ERR "i2c_sitara_read: Timeout\n");
+
+        printk(KERN_INFO "i2c_sitara_read: raw status = 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW));
+
+        return -1;
+    }
+    //printk(KERN_INFO "i2c_sitara_read: Interrupción de rrdy recibida\n");
+
+    /*Read buffer until its empty*/
+    *data = rx[rx_count];
+
+    //Liberamos el bus
+    mutex_unlock(&lock_bus);
+>>>>>>> tmp
+
+    printk(KERN_INFO "i2c_sitara_read: slave_address = 0x%x slave_register = 0x%x data = 0x%x\n", slave_address, slave_register, *data);
+   
     return 0;
 }
 
@@ -283,7 +382,7 @@ int i2c_sitara_read(uint8_t slave_address, uint8_t slave_register, uint8_t mask,
  * @param data Dato a escribir
  * @return int 
  */
-int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t data)
+int i2c_sitara_write(const uint8_t slave_address, const uint8_t slave_register, const uint8_t data)
 {
     int ret_val = 0;
 
@@ -300,41 +399,47 @@ int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t dat
         printk(KERN_ERR "i2c_sitara_read: Error al esperar la interrupción de bus libre\n");
         return ret_val;
     }
-    
-    if(i2c_sitara_set_count(2))
-    {
-        printk(KERN_ERR "i2c_sitara_read: Error al configurar el contador\n");
-        return -1;
-    }
 
-    /*Reset FIFOs*/
-    if(i2c_reset_fifos())
-    {
-        printk(KERN_ERR "i2c_sitara_read: Error al resetear los FIFOs\n");
-        return -1;
-    }
+    //Loqueamos el buss
+    mutex_lock(&lock_bus);
 
-    /*Set slave address*/
-    iowrite32(slave_address << 1, i2c2_registers+I2C_SITARA_SA);
-    /*Set data*/
-    iowrite32(slave_register, i2c2_registers+I2C_SITARA_DATA);
-    iowrite32(data, i2c2_registers+I2C_SITARA_DATA);
+    //Reset FIFOs
+    iowrite32(I2C_SITARA_BUF_RXFIFO_CLR | I2C_SITARA_BUF_TXFIFO_CLR, i2c2_registers+I2C_SITARA_BUF);
 
-    /*Start*/
-    ret_val = i2c_sitara_start();
-    if(ret_val != 0)
-    {
-        printk(KERN_ERR "i2c_sitara_read: Error al iniciar el bus\n");
-        return ret_val;
-    }
+    //Configuro el contador
+    iowrite32(2, i2c2_registers+I2C_SITARA_CNT);
 
-    // pool bus
-    ret_val = pool_register(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW, I2C_SITARA_BB, 0, 1000);
-    if(ret_val != 0)
+    // Set slave address
+    iowrite32(slave_address, i2c2_registers+I2C_SITARA_SA);
+
+    // Set slave register
+    //iowrite32(slave_register, i2c2_registers+I2C_SITARA_DATA);
+
+    // Set data
+    //iowrite32(data, i2c2_registers+I2C_SITARA_DATA);
+
+    trx[1] = slave_register;
+    trx[0] = data;
+    trx_count = 2;
+    rx[0] = 0;
+    rx_count = 1;
+
+    // Set master reciever mode and start
+    iowrite32(I2C_SITARA_CON_MST | I2C_SITARA_CON_TRX | I2C_SITARA_CON_EN | I2C_SITARA_CON_STT | I2C_SITARA_CON_STP, i2c2_registers+I2C_SITARA_CON);
+
+    if(wait_for_completion_interruptible_timeout(&xrdy, msecs_to_jiffies(100))==0)
     {
         printk(KERN_ERR "i2c_sitara_read: Error al esperar la interrupción de bus libre\n");
-        return ret_val;
+        printk(KERN_ERR "i2c_sitara_read: Timeout\n");
+
+        printk(KERN_INFO "i2c_sitara_read: raw status = 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW));
+
+        return -1;
     }
+
+    mutex_unlock(&lock_bus);
+
+    printk(KERN_INFO "i2c_sitara_write: slave_address = 0x%x slave_register = 0x%x data = 0x%x\n", slave_address, slave_register, data);
 
     return 0;
 }
@@ -346,22 +451,11 @@ int i2c_sitara_write(uint8_t slave_address, uint8_t slave_register,  uint8_t dat
  */
 int i2c_sitara_is_connected(uint8_t slave_address)
 {
-    int ret_val = 0;
-    uint8_t aux = 0;
-
     if(i2c2_registers==NULL)
     {
         printk(KERN_ERR "i2c: Registros no mapeados en memoria, iniciar el bus\n");
+        return -1;
     }
-
-    ret_val = i2c_sitara_read(slave_address, 0xD0, 0xff, &aux);
-
-    if( ret_val != 0)
-    {
-        printk(KERN_ERR "i2c: Error al leer el registro\n");
-        return ret_val;
-    }
-
     return 0;
 }
 
@@ -374,18 +468,23 @@ int i2c_sitara_is_connected(uint8_t slave_address)
  */
 static irqreturn_t  i2c_sitara_irq_handler (int irq, void *dev_id)
 {
+    uint32_t irq_status = 0;
     uint32_t irq_status_raw = 0;
 
-    printk(KERN_INFO "i2c_sitara_irq_handler: IRQ\n");
+    //printk(KERN_INFO "i2c_sitara_irq_handler: IRQ\n");
 
     irq_status_raw = ioread32(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW);
 
-    printk(KERN_INFO "i2c_sitara_irq_handler: irq_status_raw = %d\n", irq_status_raw);
+    //irq_status = ioread32(i2c2_registers+I2C_SITARA_IRQSTATUS);
 
-    while(irq_status_raw != 0)
+    //printk(KERN_INFO "i2c_sitara_irq_handler: irq_status_raw = %x\n", irq_status_raw);
+    
+    irq_status = ioread32(i2c2_registers+I2C_SITARA_IRQSTATUS);
+
+    //printk(KERN_INFO "i2c_sitara_irq_handler: irq_status = %x\n", irq_status);
+
+    while((irq_status = ioread32(i2c2_registers+I2C_SITARA_IRQSTATUS))!= 0)
     {
-        set_bit_32(i2c2_registers+I2C_SITARA_IRQSTATUS, irq_status_raw);
-
         if(irq_status_raw & I2C_SITARA_AL)
         {
             printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_AL\n");
@@ -396,6 +495,7 @@ static irqreturn_t  i2c_sitara_irq_handler (int irq, void *dev_id)
         }
         if(irq_status_raw & I2C_SITARA_ARDY)
         {
+<<<<<<< HEAD
             printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_ARDY\n");
             i2c_reset_fifos();
             // Configure in master receive mode
@@ -434,61 +534,100 @@ static irqreturn_t  i2c_sitara_irq_handler (int irq, void *dev_id)
             //habilito la interrupción de RRDY
             iowrite32(I2C_SITARA_RRDY, i2c2_registers+I2C_SITARA_IRQENABLE_SET);
 
+=======
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_ARDY\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: Operacion de lectura/escritura finalizada\n");
+            //write data
+            complete(&ardy);
+        }
+        if(irq_status_raw & I2C_SITARA_RRDY)
+        {
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_RRDY\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: Dato listo para leer\n");
+            //read data
+            
+            if(rx_count == 1)
+            {
+                rx[rx_count-1] = ioread32(i2c2_registers+I2C_SITARA_DATA);
+                rx_count--;
+                complete(&rrdy);
+            }
+            if(rx_count > 1)
+            {
+                rx[rx_count-1] = ioread32(i2c2_registers+I2C_SITARA_DATA);
+                rx_count--;
+            }
+        }
+        if(irq_status_raw & I2C_SITARA_XRDY)
+        {
+            //write
+            if(trx_count == 1)
+            {
+                iowrite32(trx[trx_count-1], i2c2_registers+I2C_SITARA_DATA);
+                trx_count--;
+                complete(&xrdy);
+            }
+            if(trx_count > 1)
+            {
+                iowrite32(trx[trx_count-1], i2c2_registers+I2C_SITARA_DATA);
+                trx_count--;
+            }
+>>>>>>> tmp
         }
         if(irq_status_raw & I2C_SITARA_GC)
         {
-            printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_GC\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_GC\n");
         }
         if(irq_status_raw & I2C_SITARA_STC)
         {
-            printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_STC\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_STC\n");
         }
         if(irq_status_raw & I2C_SITARA_AERR)
         {
-            printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_AERR\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_AERR\n");
         }
         if(irq_status_raw & I2C_SITARA_BF)
         {
-            printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_BF\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_BF\n");
         }
         if(irq_status_raw & I2C_SITARA_AAS)
         {
-            printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_AAS\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_AAS\n");
         }
         if(irq_status_raw & I2C_SITARA_XUDF)
         {
-            printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_XUDF\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_XUDF\n");
         }
         if(irq_status_raw & I2C_SITARA_ROVR)
         {
-            printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_ROVR\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_ROVR\n");
         }
         if(irq_status_raw & I2C_SITARA_BB)
         {
-            printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_BB\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_BB\n");
         }
         if(irq_status_raw & I2C_SITARA_RDR)
         {
-            printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_RDR\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_RDR\n");
         }
         if(irq_status_raw & I2C_SITARA_XDR)
         {
-            printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_XDR\n");
+            //printk(KERN_INFO "i2c_sitara_irq_handler: I2C_SITARA_IRQSTATUS_XDR\n");
         }
         
-        irq_status_raw = ioread32(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW);
+        iowrite32(irq_status, i2c2_registers+I2C_SITARA_IRQSTATUS);
     }
     
-    printk(KERN_INFO "i2c_sitara_irq_handler: IRQ handled\n");
+    //printk(KERN_INFO "i2c_sitara_irq_handler: IRQ handled\n");
 
     return IRQ_HANDLED;
 }
 
 
-/// @brief Configura el clock del I2C2
+/// @brief Configura el clock del I2C2 y enciende el módulo
 /// @param void 
 /// @return 0 si la configuración fue exitosa o un valor negativo en caso de error
-static int i2c_sitara_turn_on_peripheral(void)
+int i2c_sitara_turn_on_peripheral(void)
 {
     int ret_val = 0;
     
@@ -519,7 +658,8 @@ static int i2c_sitara_turn_on_peripheral(void)
     /*Enciendo periferico*/
     /*Lo coloco en modo activado*/
     /*Página 1270*/
-    set_bit_32(cm_per+CM_PER_I2C2_CLKCTRL_OFFSET, 0x2);
+
+    iowrite32( ioread32(cm_per+CM_PER_I2C2_CLKCTRL_OFFSET) | 0x2, cm_per+CM_PER_I2C2_CLKCTRL_OFFSET);
 
     ret_val = pool_register(cm_per+CM_PER_I2C2_CLKCTRL_OFFSET,  0x03, 0x02,1000);
 
@@ -545,7 +685,6 @@ static int i2c_sitara_turn_on_peripheral(void)
     iounmap(cm_per);
     iounmap(cm_wkup);
 
-    msleep(10);
     printk(KERN_INFO "i2c_sitara_turn_on_peripheral: Configuración del clock del I2C2 exitosa\n");
     
     return 0;
@@ -553,41 +692,10 @@ static int i2c_sitara_turn_on_peripheral(void)
 }
 
 
-/// @brief       Realiza un pooling de un registro hasta que se cumpla una condición
-/// @param reg   Dirección del registro a realizar el pooling
-/// @param mask  Máscara de bits a comparar
-/// @param value Valor a comparar
-/// @param timeout Tiempo máximo en milisegundos de pooling
-/// @return      -EIO if the pooling took too long, or the time it took to pool
-static int pool_register(void __iomem *reg, uint32_t mask, uint32_t value, uint32_t timeout)
-{
-    unsigned int counter = 0;
-
-    printk(KERN_INFO "pool_register: Iniciando pooling\n");
-
-    while((ioread32(reg) & mask) != value)
-    {
-        msleep(1); //Duerme el proceso por 1 ms (No bloqueante)
-
-        counter++;
-        if(counter > timeout)
-        {
-            printk(KERN_ERR "pool_register: El pooling tardó demasiado.");
-            return -EIO;
-        }
-    }
-
-    printk(KERN_INFO "pool_register: Pooling exitoso\n");
-
-    printk(KERN_INFO "pool_register: Tiempo de espera: %d\n", counter);
-
-    return 0;
-}
-
 /// @brief Función que configura los pins del I2C2
 /// @param  void
 /// @return 0 si la configuración fue exitosa o un valor negativo en caso de error
-static int i2c_sitara_config_pinmux(void)
+int i2c_sitara_config_pinmux(void)
 {
     static void __iomem *ctrl_module = NULL;
 
@@ -623,34 +731,7 @@ static int i2c_sitara_config_pinmux(void)
  * 
  * @return int 
  */
-static int i2c_sitara_config_regs(void)
-{
-    int ret_val = 0;
-
-    if(i2c2_registers == NULL)
-    {
-        printk(KERN_ERR "i2c_sitara_config_regs: Los registros no están mapeados\n");
- 
-    }
-    
-    /*I2c_CON:I2C_EN =1*/
-    /*Configure the I2C mode register (I2C_CON) bits.*/
-    iowrite32(I2C_SITARA_CON_EN| I2C_SITARA_CON_MST | I2C_SITARA_CON_TRX,i2c2_registers+I2C_SITARA_CON);
-
-    /*Enable interrupt masks (I2C_IRQENABLE_SET), if using interrupt for transmit/receive data.*/
-    iowrite32(0xffff,i2c2_registers+I2C_SITARA_IRQENABLE_SET);//I2C_SITARA_ARDY | I2C_SITARA_RRDY | I2C_SITARA_XRDY | I2C_SITARA_NACK |I2C_SITARA_AL | I2C_SITARA_BF);
-
-    printk(KERN_INFO "i2c_sitara_config_regs: Configuración de registros i2c2 exitosa\n");
-
-    return ret_val;
-}
-
-/**
- * @brief 
- * 
- * @return int 
- */
-static int i2c_sitara_config_interrupts(struct platform_device *pdev)
+int i2c_sitara_config_interrupts(struct platform_device *pdev)
 {
     int ret_val = 0;
 
@@ -679,176 +760,16 @@ static int i2c_sitara_config_interrupts(struct platform_device *pdev)
 
 
 /**
- * @brief 
+ * @brief  free_irq() - free an interrupt allocated with request_irq()
  * 
  * @return int 
  */
-static int i2c_sitara_free_interrupts(void)
+int i2c_sitara_free_interrupts(void)
 {
 
     free_irq(irq_number, NULL);
 
     printk(KERN_INFO "i2c_sitara_free_interrupts: free_irq() OK!\n");
-
-    return 0;
-}
-
-#define I2C_CLK_INT 48000000
-#define I2C_CLK 12000000
-#define I2C_BIT_RATE 100000
-
-/**
- * @brief 
- * 
- * @return int 
- */
-static int i2c_sitara_config_clock(void)
-{
-    int ret_val = 0;
-
-    unsigned int aux = 0;
-
-    if(i2c2_registers == NULL)
-    {   
-        printk(KERN_ERR "i2c_sitara_config_clock: Los registros no están mapeados\n");
-    }
-
-    /*Configurando prescaler*/
-
-    /*I2C_PSC = x para obtener 12MHz*/
-    iowrite32(12, i2c2_registers+I2C_SITARA_PSC);
-
-    /*Programar para obtener entre 100Kbps o 400Kbps con SCLL Y SCLH*/
-
-    aux = 113;
-
-    printk(KERN_INFO "i2c_sitara_config_clock: scll = %d\n", aux);
-
-    iowrite32(aux, i2c2_registers+I2C_SITARA_SCLL);
-
-    aux = 115;
-
-    printk(KERN_INFO "i2c_sitara_config_clock: aux = %d\n", aux);
-
-    iowrite32(aux, i2c2_registers+I2C_SITARA_SCLH);
-
-    printk(KERN_INFO "i2c_sitara_config_clock: Configuración del clock del I2C2 exitosa\n");
-
-    return ret_val;
-}
-
-/// @brief 
-/// @param  
-/// @return 
-static int i2c_sitara_start(void)
-{
-    int ret_val = 0;
-
-    iowrite32(0xFF, i2c2_registers+I2C_SITARA_IRQENABLE_SET);
-    
-    if(i2c2_registers==NULL)
-    {
-        printk(KERN_ERR "i2c_sitara_start: NULL ptr\n");
-        return -ENOMEM;
-    }
-
-    /*Configuro los bits de control*/
-    iowrite32( I2C_SITARA_CON_STT | I2C_SITARA_CON_MST | I2C_SITARA_CON_TRX | I2C_SITARA_CON_EN , i2c2_registers+I2C_SITARA_CON);
-    
-    printk(KERN_INFO "i2c_sitara_start: i2c2_registers start\n");
-
-    return ret_val;
-}
-
-static int i2c_sitara_set_count(unsigned int dcount)
-{
-    int ret_val = 0;
-
-    if(i2c2_registers==NULL)
-    {
-        printk(KERN_ERR "i2c_sitara_set_count: NULL ptr\n");
-        return -ENOMEM;
-    }
-
-    /*Seteo la cuenta de bits*/
-    iowrite32(dcount, i2c2_registers+I2C_SITARA_CNT);
-
-    return ret_val;
-}
-
-/// @brief 
-/// @param  
-/// @return   
-static int i2c_reset_fifos(void)
-{
-    int ret_val = 0;
-
-    if(i2c2_registers==NULL)
-    {
-        printk(KERN_ERR "i2c_reset_fifos: NULL ptr\n");
-        return -ENOMEM;
-    }
-
-    iowrite32(I2C_SITARA_BUF_RXFIFO_CLR | I2C_SITARA_BUF_TXFIFO_CLR, i2c2_registers+I2C_SITARA_BUF);
-
-    return ret_val;
-}
-
-
-static int i2c_sitara_reset(void)
-{
-    if(i2c2_registers==NULL)
-    {
-        printk(KERN_ERR "i2c_sitara_reset: NULL ptr\n");
-        return -ENOMEM;
-    }
-
-    iowrite32(0xffff, i2c2_registers+I2C_SITARA_IRQENABLE_CLR);
-
-    iowrite32(I2C_SITARA_SYSC_SRST, i2c2_registers+I2C_SITARA_SYSC);
-
-    printk(KERN_INFO "i2c_sitara_reset: i2c2_registers reset\n");
-
-    return 0;
-}
-
-static int i2c_sitara_print_status(void)
-{
-    //print all the registers
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_REVNB_LO \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_REVNB_LO));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_REVNB_HI \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_REVNB_HI));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_SYSC \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_SYSC));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_IRQSTATUS_RAW \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_IRQSTATUS_RAW));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_IRQSTATUS \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_IRQSTATUS));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_IRQENABLE_SET \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_IRQENABLE_SET));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_IRQENABLE_CLR \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_IRQENABLE_CLR));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_WE \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_WE));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_SYSS \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_SYSS));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_BUF \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_BUF));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_CNT \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_CNT));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_DATA \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_DATA));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_CON \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_CON));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_SA \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_SA));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_PSC \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_PSC));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_SCLL \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_SCLL));
-
-    printk(KERN_INFO "i2c_sitara_print_status: I2C_SITARA_SCLH \t= 0x%x\n", ioread32(i2c2_registers+I2C_SITARA_SCLH));
 
     return 0;
 }
